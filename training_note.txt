@@ -1,0 +1,17 @@
+##########################Apr-11
+- residual block = 5, add layer, mul layer, SA layer	-->PSNR = 18-24 (Apr10- 15-46) 
+- residual block = 5; loss_add + loss_mul + loss_clean 	-->PSNR = 14-22 (Apr10- 23-29)
+- residual block = 9; ________________________________ 	-->PSNR = 11-22	(Apr-11- 10-18)
+- residual block = 5; afim for add, mul, clean and use mul loss		   	-->PSNR = 10-20, fluctuate (Apr-11 18-39)
+- residual block = 5; ________________________ and only output loss		-->PSNR = 18-22 	(Apr-12 01-23)
+- residual block = 5; them sa_layer sau features 						-->PSNR = 17.5-22 	(Apr-12 15-40)
+- residual block = 5; them sa_layer sau operator_layer 					-->PSNR = 19-23		(Apr-12 22-06)
+learning rate affect --> lr = 5*1e-5, initial -> good result
+- normalize (0:1); attention in deep multi model paper, out_comb = (clean, add, mul, add, add) --> PSNR = 21-24 (Apr-17 00-52)
+- normalize (0:1) channel attention 					______________________________________ --> PSNR = 14-23.5 (Apr-17 09-59)
+
+#####################data DID-MDN
+normalize (0:1) channel attention, only 1 loss(output) 						______________________________________ --> PSNR = (Apr-17 21-22)
+normalize (0:1) channel attention, patch_size = 256		______________________________________ --> PSNR = 18-27.5	(Apr-17 23-59) 
+normalize (-1:1) channel attention, patch_size =256, only 1 loss(output)		______________________________________ --> PSNR = 26-33.5	(Apr-18 14-15) **********************************************
+normalize (-1:1) channel attention, patch_size = 256, loss_add, loss_clean, loss_mul _________ --> PSNR = 26-33 	(Apr-19 10-16)
