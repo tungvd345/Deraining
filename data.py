@@ -37,15 +37,6 @@ def getPatch(imgIn, imgTar, args):
 
     return imgIn, imgTar
 
-def get_keypoints(pos, imgIn, keypoint_size):
-    # imgIn = np.pad(imgIn, ([0, keypoint_size], [0, keypoint_size//2*3], [0,0]), 'constant',constant_values=0)
-    imgIn = np.pad(imgIn, ([0, keypoint_size], [0, keypoint_size//2*3], [0,0]), 'edge')
-    keypoint_size = keypoint_size
-    keypoints = np.zeros([keypoint_size, keypoint_size//2*3,3*128])
-    for i in range(128):
-        keypoints[:,:,i*3:i*3+3] = imgIn[pos[i,1] : pos[i,1]+keypoint_size, pos[i,0] : pos[i,0]+keypoint_size//2*3, :]
-
-    return keypoints
 
 def augment(imgIn, imgTar):
     if random.random() < 0.3: # horizontal flip
