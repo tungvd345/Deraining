@@ -37,6 +37,26 @@ def getPatch(imgIn, imgTar, args):
 
     return imgIn, imgTar
 
+def get_keypoints(pos, imgIn, keypoint_size):
+    # imgIn = np.pad(imgIn, ([0, keypoint_size], [0, keypoint_size//2*3], [0,0]), 'constant',constant_values=0)
+    nkeypoints = np.size(pos, 0)
+    h, w, c = imgIn.shape
+    if nkeypoints == 0:
+        print('000000000000000000')
+        nkeypoints = 128
+        pos = np.random.randint(h, size=(128,2))
+
+    imgIn = np.pad(imgIn, ([0, keypoint_size], [0, keypoint_size//2*3], [0,0]), 'edge')
+    keypoint_size = keypoint_size
+    keypoints = np.zeros([keypoint_size, keypoint_size//2*3,3*128])
+    for i in range(min(nkeypoints, 128)):
+        keypoints[:,:,i*3:i*3+3] = imgIn[pos[i,1] : pos[i,1]+keypoint_size, pos[i,0] : pos[i,0]+keypoint_size//2*3, :]
+    if (nkeypoints<128):
+        # print('num_features < 128')
+        for i in range(nkeypoints, 128):
+            keypoints[:, :, i*3:i*3+3] = keypoints[:,:, nkeypoints*3-3:nkeypoints*3]
+
+    return keypoints
 
 def augment(imgIn, imgTar):
     if random.random() < 0.3: # horizontal flip
@@ -47,9 +67,9 @@ def augment(imgIn, imgTar):
         imgIn = imgIn[::-1, :, :]
         imgTar = imgTar[::-1, :, :]
 
-    rot = random.randint(0, 3) # rotate
-    imgIn = np.rot90(imgIn, rot, (0, 1))
-    imgTar = np.rot90(imgTar, rot, (0, 1))
+    rot = random.randint(0, 1) # rotate 0/180 degree
+    imgIn = np.rot90(imgIn, rot*2, (0, 1))
+    imgTar = np.rot90(imgTar, rot*2, (0, 1))
 
     return imgIn, imgTar
 
@@ -96,17 +116,33 @@ class outdoor_rain_train(data.Dataset):
         self.file_tar_list = sorted(make_dataset(self.dir_tar))
         self.transform = get_transform(args)
         self.len = len(self.file_in_list)
+        ###############
+
 
     def __getitem__(self, idx):
         args = self.args
         img_in = cv2.imread(self.file_in_list[idx])
         img_tar = cv2.imread(self.file_tar_list[idx//15])
         img_in, img_tar = augment(img_in, img_tar)
-        if args.need_patch:
-            img_in, img_tar = getPatch(img_in, img_tar, self.args)
-        img_in, img_tar = RGB_np2tensor(img_in, img_tar, args.nchannel)
+        img_in_LR = img_in[::2, ::2, :]
+        img_tar_LR = img_tar[::2, ::2, :]
+        # if args.need_patch:
+        #     img_in, img_tar = getPatch(img_in, img_tar, self.args)
 
-        return img_in, img_tar
+        #################################################
+
+        mser = cv2.MSER_create()
+        keypoints_in_pos = mser.detect(img_in_LR)
+        keypoints_in_pos = np.uint16(np.asarray([p.pt for p in keypoints_in_pos]))
+        keypoints_in = get_keypoints(keypoints_in_pos, img_in_LR, 16)
+
+        # keypoints_tar_pos = mser.detect(img_tar_LR)
+        # keypoints_tar_pos = np.uint16(np.asarray([p.pt for p in keypoints_tar_pos]))
+        # keypoints_tar = get_keypoints(keypoints_tar_pos, img_tar, 32)
+        #################################################
+        img_in, img_tar = RGB_np2tensor(img_in, img_tar, args.nchannel)
+        img_in_LR, keypoints_in = RGB_np2tensor(img_in_LR, keypoints_in, args.nchannel)
+        return img_in_LR, img_tar, keypoints_in
 
         #################### read dataset in JORDER
         # img_in = Image.open(self.file_in_list[idx]).convert("RGB")
@@ -190,10 +226,18 @@ class outdoor_rain_test(data.Dataset):
 
         ##################### use cv2 image
         img_in = cv2.imread(self.file_in_list[idx])
+        img_in_LR = img_in[::2, ::2, :]
         img_tar = cv2.imread(self.file_tar_list[idx // 15])
+
+        mser = cv2.MSER_create()
+        keypoints_in_pos = mser.detect(img_in_LR)
+        keypoints_in_pos = np.uint16(np.asarray([p.pt for p in keypoints_in_pos]))
+        keypoints_in = get_keypoints(keypoints_in_pos, img_in_LR, 16)
+
         img_in, img_tar = RGB_np2tensor(img_in, img_tar, args.nchannel)
+        img_in_LR, keypoints_in = RGB_np2tensor(img_in_LR, keypoints_in, args.nchannel)
         ##################################################################
-        return img_in, img_tar
+        return img_in_LR, img_tar, keypoints_in
 
     def __len__(self):
         return self.len

@@ -17,17 +17,13 @@ class Deraining(nn.Module):
         self.upsample1 = nn.Upsample((self.args.patch_size // 2, self.args.patch_size // 4 * 3), mode = 'bilinear', align_corners=True) # input LR
         self.upx2 = nn.Upsample(scale_factor=2, mode = 'bilinear', align_corners=True)
         self.extractor = feature_extractor()
-        # print(feature_extractor())
-        self.afim = AFIM(channels=128)
+        self.up_feature = up_feature(in_channels=128*3)
+        # self.conv1 = nn.Conv2d(in_channels=128*3, out_channels=128, kernel_size=1)
+        self.afim = AFIM(in_channels=128, out_channels=128)
         self.ats_model = ATS_model(args, in_channels=3)
-        self.operation_layer = operation_layer(in_channels=128)
-        # self.sa_features = SA_layer(in_dim=128, activation=nn.LeakyReLU(0.2, True))
-        # self.sa_layer = SA_layer(in_dim=3, activation=nn.LeakyReLU(0.2, True))
+        self.operation_layer = operation_layer(in_channels=3)
+
         self.relu = nn.LeakyReLU(0.2, True)
-        # self.transform = transforms.Normalize((0.5, 0.5, 0.5),
-        #                                     (0.5, 0.5, 0.5))
-        # self.inv_transform = transforms.Normalize((-1, -1, -1),
-        #                                     (2, 2, 2))
         self.last_layer = nn.Sequential(
             nn.ConvTranspose2d(15, 3, kernel_size=1),
             nn.Tanh(),
@@ -36,15 +32,17 @@ class Deraining(nn.Module):
         self.channel_att = channel_attention(in_channels=9)
         self.rcan = RCAN(args)
 
-    def forward(self, x):
-        # print('input: ', x)
+    def forward(self, x, kpts):
         b, c, height, width = x.size()
-        x = self.upsample1(x)
-        features = self.extractor(x)
-        # print('feature--------', features)
+        # x = self.upsample1(x)
+
+        # features = self.extractor(x)
         # features_clean = self.afim(features)
-        features_add = self.afim(features)
+        # features_add = self.afim(features)
         # features_mul = self.afim(features)
+
+        # features_add = self.afim(kpts)
+        features_add = self.up_feature(kpts)
 
         # atm, trans, streak = self.ats_model(features_clean)
         atm, trans, streak = self.ats_model(x)
@@ -83,11 +81,11 @@ class Deraining(nn.Module):
         w0, w1, w2 = self.channel_att(concatenates)
         out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer
 
-        upsample2 = nn.Upsample((height // 2, width // 2), mode = 'bilinear', align_corners=True)
-        out_comb = upsample2(out_comb)
-        clean = upsample2(clean)
-        add_layer = upsample2(add_layer)
-        mul_layer = upsample2(mul_layer)
+        # upsample2 = nn.Upsample((height // 2, width // 2), mode = 'bilinear', align_corners=True)
+        # out_comb = upsample2(out_comb)
+        # clean = upsample2(clean)
+        # add_layer = upsample2(add_layer)
+        # mul_layer = upsample2(mul_layer)
 
         out_SR = self.rcan(out_comb)
         out_combine = self.upx2(out_comb)
@@ -548,44 +546,6 @@ class feature_extractor(nn.Module):
         for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
-# class feature_extractor(nn.Module):
-#     def __init__(self, out_channels = 128):
-#         super(feature_extractor, self).__init__()
-#         self.resnext = ResNeXt101()
-#
-#         self.down4 = nn.Sequential(
-#             nn.Conv2d(2048, 64, kernel_size=1), nn.BatchNorm2d(64), nn.PReLU()
-#         )
-#         self.down3 = nn.Sequential(
-#             nn.Conv2d(1024, 64, kernel_size=1), nn.BatchNorm2d(64), nn.PReLU()
-#         )
-#         self.down2 = nn.Sequential(
-#             nn.Conv2d(512, 64, kernel_size=1), nn.BatchNorm2d(64), nn.PReLU()
-#         )
-#         self.down1 = nn.Sequential(
-#             nn.Conv2d(256, 64, kernel_size=1), nn.BatchNorm2d(64), nn.PReLU()
-#         )
-#         self.fuse1 = nn.Sequential(
-#             nn.Conv2d(256, 128, kernel_size=3, padding=1), nn.BatchNorm2d(128), nn.PReLU(),
-#             nn.Conv2d(128, 128, kernel_size=3, padding=1), nn.BatchNorm2d(128), nn.PReLU(),
-#             nn.Conv2d(128, 128, kernel_size=1), nn.BatchNorm2d(128), nn.PReLU()
-#         )
-#
-#     def forward(self,x):
-#         layer0 = self.resnext.layer0(x)
-#         layer1 = self.resnext.layer1(layer0)
-#         layer2 = self.resnext.layer2(layer1)
-#         layer3 = self.resnext.layer3(layer2)
-#         layer4 = self.resnext.layer4(layer3)
-#
-#         down4 = F.upsample(self.down4(layer4), size=(128, 128), mode='bilinear')
-#         down3 = F.upsample(self.down3(layer3), size=(128, 128), mode='bilinear')
-#         down2 = F.upsample(self.down2(layer2), size=(128, 128), mode='bilinear')
-#         down1 = F.upsample(self.down1(layer1), size=(128, 128), mode='bilinear') #self.down1(layer1)
-#
-#         feature = self.fuse1(torch.cat((down4, down3, down2, down1), 1))
-#         return feature
-
 class ResidualBlockStraight(nn.Module):
     def __init__(self, in_channels = 128, out_channels = 128, last=False):
         super(ResidualBlockStraight, self).__init__()
@@ -655,29 +615,55 @@ class mul_layer(nn.Module):
 '''
 # class AFIM is same in 'deep multi model fusion' paper
 class AFIM(nn.Module):
-    def __init__(self, channels):
+    def __init__(self, in_channels, out_channels):
         super(AFIM, self).__init__()
+        # self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1)
         sequence1 = [
-            nn.Conv2d(in_channels= channels, out_channels = 64, kernel_size = 3, padding = 1),
+            nn.Conv2d(in_channels=out_channels, out_channels=64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
             nn.Conv2d(in_channels = 64, out_channels = 64, kernel_size = 3, padding = 1),
             nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
-            nn.Conv2d(in_channels = 64, out_channels = channels, kernel_size = 1),
+            nn.Conv2d(in_channels = 64, out_channels = out_channels, kernel_size = 3, padding=1),
             nn.Softmax2d()
         ]
         self.model1 = nn.Sequential(*sequence1)
         sequence2 = [
-            nn.Conv2d(in_channels=channels, out_channels=64, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=out_channels, out_channels=64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
-            nn.Conv2d(in_channels=64, out_channels=channels, kernel_size=1)
+            nn.Conv2d(in_channels=64, out_channels=out_channels, kernel_size=1)
         ]
         self.model2 = nn.Sequential(*sequence2)
 
     def forward(self, x):
+        # x = self.conv1(x)
         x  = x * self.model1(x)
         x  = x + self.model2(x)
+        return x
+
+class up_feature(nn.Module):
+    def __init__(self, in_channels, out_channels=3):
+        super(up_feature, self).__init__()
+        sequence = [
+            nn.Conv2d(in_channels=in_channels, out_channels=128, kernel_size=3, padding=1),
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),   # 32x48
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),    # 64x96
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),    # 128x192
+            nn.LeakyReLU(0.2, True),
+            nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, padding=1),     # 256*384
+            nn.LeakyReLU(0.2, True),
+            nn.Upsample((240, 360), mode = 'bilinear', align_corners=True),
+            nn.Conv2d(8, out_channels, kernel_size=1),
+            nn.Dropout2d(0.5)
+        ]
+        self.sequence = nn.Sequential(*sequence)
+
+    def forward(self, x):
+        x = self.sequence(x)
         return x
 
 class channel_attention(nn.Module):
@@ -686,11 +672,11 @@ class channel_attention(nn.Module):
         sequence1 = [
             nn.Conv2d(in_channels=in_channels, out_channels=128, kernel_size=1),
             nn.BatchNorm2d(128), nn.LeakyReLU(0.2, True),
-            nn.Conv2d(in_channels = 128, out_channels = in_channels, kernel_size =1)#, padding = 1),
-            # nn.BatchNorm2d(128), nn.LeakyReLU(0.2, True),
-            # nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1),
-            # nn.BatchNorm2d(128), nn.LeakyReLU(0.2, True),
-            # nn.Conv2d(in_channels = 128, out_channels = out_channels, kernel_size = 1),
+            nn.Conv2d(in_channels = 128, out_channels = 64, kernel_size =1),
+            nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
+            nn.Conv2d(in_channels=64, out_channels=32, kernel_size=1),
+            nn.BatchNorm2d(32), nn.LeakyReLU(0.2, True),
+            nn.Conv2d(in_channels = 32, out_channels = in_channels, kernel_size = 1),
             # nn.Softmax2d()
         ]
         self.model1 = nn.Sequential(*sequence1)

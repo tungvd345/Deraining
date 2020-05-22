@@ -31,7 +31,7 @@ class TrainOptions():
 		self.parser.add_argument('--patch_size', type=int, default = 256, help='patch size')
 
 		self.parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
-		self.parser.add_argument('--batch_size', type=int, default=8, help='input batch size for training')
+		self.parser.add_argument('--batch_size', type=int, default=4, help='input batch size for training')
 		self.parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 		self.parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train')
 		self.parser.add_argument('--lrDecay', type=int, default=100, help='epoch of half lr')

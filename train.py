@@ -65,12 +65,13 @@ def test(args, model, dataloader):
     # # rain_img_tb, clean_img_tb = dataiter.next()
     ###############################################
 
-    for idx, (rain_img, clean_img) in enumerate(dataloader):
+    for idx, (rain_img, clean_img, keypoints_in) in enumerate(dataloader):
         # print('inx:', batch)
         with torch.no_grad():
             rain_img = Variable(rain_img.cuda(), volatile=False)
             clean_img = Variable(clean_img.cuda())
-            output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img)
+            keypoints_in = Variable(keypoints_in.cuda())
+            output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img, keypoints_in)
 
         output = output.cpu()
         output = output.data.squeeze(0)
@@ -147,7 +148,7 @@ def train(opt, train_dataloader, test_dataloader, model):
     #########################
     writer_t = SummaryWriter()
     dataiter = iter(train_dataloader)
-    rain_img_tb, clean_img_tb = dataiter.next()
+    rain_img_tb, clean_img_tb, keypoints_tb = dataiter.next()
     # img_grid = torchvision.utils.make_grid(rain_img)
     ##########################
     for epoch in range(start_epoch, opt.epochs):
@@ -157,14 +158,15 @@ def train(opt, train_dataloader, test_dataloader, model):
         total_loss_ = 0
         loss_ = 0
 
-        for idx, (rain_img, clean_image) in enumerate(train_dataloader):
+        for idx, (rain_img, clean_image, keypoints_in) in enumerate(train_dataloader):
             # print('*'*10)
             rain_img = Variable(rain_img.cuda())
             clean_image = Variable(clean_image.cuda())
+            keypoints_in = Variable(keypoints_in.cuda())
 
             model.zero_grad()
-            output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img)
-            # print(model)
+            output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img, keypoints_in)
+
             loss = loss_function(output, clean_image)
             # loss_clean = loss_function(clean_layer, clean_image)
             # loss_add = loss_function(add_layer, clean_image)
@@ -187,7 +189,8 @@ def train(opt, train_dataloader, test_dataloader, model):
             #############################################
             rain_img_tb = rain_img_tb.cuda()
             clean_img_tb = clean_img_tb.cuda()
-            output_tb, _, _, _, _ = model(rain_img_tb)
+            keypoints_tb = keypoints_tb.cuda()
+            output_tb, _, _, _, _ = model(rain_img_tb, keypoints_tb)
             writer_t.add_images('rain image', output_tb, epoch)
             writer_t.add_images('clean image', clean_img_tb, epoch)
             ############################################
