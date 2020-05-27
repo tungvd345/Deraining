@@ -27,16 +27,17 @@ parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy
 # parser.add_argument('--rain_valDataroot', required=False, default='G:/DATASET/JORDER_DATASET/test/rain_data_test_Light') # modifying to your SR_data folder path
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_291.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_122.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
-parser.add_argument('--patch_size', type=int, default=128, help='patch size')
+parser.add_argument('--patch_size', type=int, default=256, help='patch size')
 parser.add_argument('--resize_or_crop', type=str, default='resize_and_crop',
 					help='scaling and cropping of images at load time [resize_and_crop|crop|scale_width|scale_width_and_crop]')
 parser.add_argument('--fineSize', type=int, default=512, help='then crop to this size')
 
 parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
 parser.add_argument('--gpu', type=int, default=0, help='gpu index')
+parser.add_argument('--scale', type=int, default=2, help='scale output size /input size')
 
 args = parser.parse_args()
 
@@ -88,12 +89,13 @@ def test(args):
     avg_psnr = 0
     avg_ssim = 0
     count = 0
-    for idx, (rain_img, clean_img) in enumerate(test_dataloader):
+    for idx, (rain_img, clean_img, keypoints_in) in enumerate(test_dataloader):
         count = count + 1
         with torch.no_grad():
             rain_img = Variable(rain_img.cuda(), volatile=False)
             clean_img = Variable(clean_img.cuda())
-            output, clean_layer, add_layer, mul_layer = my_model(rain_img)
+            keypoints_in = Variable(keypoints_in.cuda())
+            output, out_combine, clean_layer, add_layer, mul_layer = my_model(rain_img, keypoints_in)
             #print(output.shape)
 
         output = output.cpu()
@@ -117,12 +119,14 @@ def test(args):
         clean_layer = clean_layer.transpose(1, 2, 0)
 
         out = np.uint8(output)
-        out_pil = Image.fromarray(out, mode='RGB')
-        out_pil.save('results/out_img/out_img_%04d.jpg' % (count))
+        # out_pil = Image.fromarray(out, mode='RGB')
+        # out_pil.save('results/out_img/out_img_%04d.jpg' % (count))
+        cv2.imwrite('results/out_img/out_img_%04d.jpg' %(count), out)
 
         clean = np.uint8(clean_layer) # clean layer - output of network
-        clean_layer_pil = Image.fromarray(clean, mode='RGB')
-        clean_layer_pil.save('results/clean_img/clean_img_%04d.jpg' % (count))
+        # clean_layer_pil = Image.fromarray(clean, mode='RGB')
+        # clean_layer_pil.save('results/clean_img/clean_img_%04d.jpg' % (count))
+        cv2.imwrite('results/clean_img/clean_img_%04d.jpg' % (count), clean)
 
         # =========== Target Image ===============
         clean_img = clean_img.cpu()
@@ -138,12 +142,11 @@ def test(args):
         clean_img = clean_img.transpose(1, 2, 0)
         clean_img = np.uint8(clean_img)
 
-        clean_img_pil = Image.fromarray(clean_img, mode='RGB')
-        clean_img_pil.save('results/GT/GT_%03d.png' %(count))
+        # clean_img_pil = Image.fromarray(clean_img, mode='RGB')
+        # clean_img_pil.save('results/GT/GT_%03d.png' %(count))
+        cv2.imwrite('results/GT/GT_%03d.png' %(count), clean_img)
 
-        # cv2.imwrite('results/clean_img_%03d.png' % (count), clean_img)
         # output_shape = np.array(output).shape
-
         # if(np.array(clean_img).shape[0] > output_shape[0]):
         #     clean_img = np.delete(clean_img, -1, axis = 0)
         # if(np.array(clean_img).shape[1] > output_shape[1]):

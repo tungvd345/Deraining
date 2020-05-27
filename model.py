@@ -101,18 +101,21 @@ class ATS_model(nn.Module):
         self.pooling = nn.AvgPool2d(kernel_size = (3,3))
         self.fc = nn.Linear(in_features = in_channels * (args.patch_size//6) * (args.patch_size//4), out_features = 3) # (patch*3//2) //3 = patch // 2
         self.sigmoid = nn.Sigmoid()
-        self.predict_S = predict_S(in_channel=128, out_channel=3)
+        self.predict_S = predict_S(in_channel=3, out_channel=3)
         self.predict_A = predict_A(128)
         self.predict_T = predict_T(in_channel=3, out_channel=3)
         self.conv = nn.Conv2d(in_channels, out_channels=128, kernel_size=3, padding=1)
 
     def forward(self,x):
         # T = self.predict_T(x)
+        S = self.predict_S(x)
+        T = self.predict_T(x)
+
         x = self.relu1(self.conv1(x))
         x = self.relu1(self.conv2(x))
         # conv_T = self.conv2(self.relu1(self.batch_norm(self.conv1(x))))
         # T = self.sigmoid(conv_T)
-        T = self.predict_A(x)
+        # T = self.predict_A(x)
 
 
         # pooling = self.pooling(x)
@@ -124,7 +127,7 @@ class ATS_model(nn.Module):
 
         # conv_S = self.conv2(self.relu1(self.batch_norm(self.conv1(x))))
         # S = self.sigmoid(conv_S)
-        S = self.predict_S(x)
+
 
         #clean = (img_in - (1 - T) * A) / (T + 0.0001) - S
         return A, T, S
@@ -132,22 +135,33 @@ class ATS_model(nn.Module):
 class predict_S(nn.Module):
     def __init__(self, in_channel, out_channel=3):
         super(predict_S, self).__init__()
-        # self.dense_block = dense_block(in_channel=in_channel, up_channel=16)
-        self.dense_block = dense_block(in_channel=in_channel, out_channel=in_channel)
-        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size=1)
-        # self.reset_params()
+        self.conv1 = nn.Conv2d(in_channel, 32, kernel_size=3, padding=1)
+        self.dense_block1 = dense_block(in_channel=32, up_channel=32)
+        # self.dense_block = dense_block(in_channel=in_channel, out_channel=in_channel)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=1)
+        self.dense_block2 = dense_block(in_channel=64, up_channel=64)
+        self.relu = nn.ReLU()
+        sequence = [nn.Conv2d(64, 64 // 2, kernel_size=1),
+                      nn.ReLU(True),
+                      nn.Conv2d(64 // 2, out_channel, kernel_size=1),
+                      nn.Dropout2d()]
+        self.down_conv = nn.Sequential(*sequence)
+        self.reset_params()
 
     def forward(self, x):
-        dense_block = self.dense_block(x)
-        # streak = self.conv(dense_block)
-        streak = dense_block
+        # dense_block = self.dense_block(x)
+        x = self.relu(self.conv1(x))
+        dense_block1 = self.dense_block1(x)
+        dense_block2 = self.relu(self.conv2(dense_block1))
+        dense_block2 = self.dense_block2(dense_block2)
+        streak = self.down_conv(dense_block2)
         return streak
 
     @staticmethod
     def weight_init(m):
         if isinstance(m, nn.Conv2d):
             init.xavier_normal_(m.weight)
-            init.constant(m.bias, 0)
+            # init.constant(m.bias, 0)
 
     def reset_params(self):
         for i, m in enumerate(self.modules()):
@@ -157,10 +171,21 @@ class predict_T(nn.Module):
     def __init__(self, in_channel, out_channel=3):
         super(predict_T, self).__init__()
         self.trans_unet = TransUNet(in_channel, out_channel)
+        self.reset_params()
 
     def forward(self, x):
         trans = self.trans_unet(x)
         return trans
+
+    @staticmethod
+    def weight_init(m):
+        if isinstance(m, nn.Conv2d):
+            init.xavier_normal_(m.weight)
+            # init.constant(m.bias, 0)
+
+    def reset_params(self):
+        for i, m in enumerate(self.modules()):
+            self.weight_init(m)
 
 class predict_A(nn.Module):
     def __init__(self, in_channel):
@@ -204,60 +229,63 @@ class predict_A(nn.Module):
 ##################################################################################
 # dense_block use pretrained dense-net
 ##################################################################################
-class dense_block(nn.Module):
-    def __init__(self, in_channel, out_channel):
-        super(dense_block, self).__init__()
-        model_dense_net = models.densenet121(pretrained=True)
-        model_dense_net = list(model_dense_net.children())[:]
-        self.dense_block = model_dense_net[0].denseblock1
-        self.conv1 = nn.Conv2d(in_channels=in_channel, out_channels=64, kernel_size=7, padding=3)
-        self.relu = nn.ReLU(True)
-        # sequence = []
-        sequence = [nn.Conv2d(256, 224, kernel_size = 1),
-                        nn.ReLU(True),
-                        nn.Conv2d(224, 192, kernel_size = 1),
-                        nn.ReLU(True),
-                        nn.Conv2d(192, 160, kernel_size = 1),
-                        nn.ReLU(True),
-                        nn.Conv2d(160, 128, kernel_size = 1),
-                        nn.ReLU(True),
-                        nn.Conv2d(128, 96, kernel_size = 1),
-                        nn.ReLU(True),
-                        nn.Conv2d(96, 64, kernel_size = 1),
-                        nn.ReLU(True),
-                        nn.Conv2d(64, 3, kernel_size = 1),
-                        nn.Dropout2d()]
-        self.down_conv = nn.Sequential(*sequence)
-
-    def forward(self, x):
-        x = self.relu(self.conv1(x))
-        dense_block = self.relu(self.dense_block(x))
-        out = self.down_conv(dense_block)
-
-        return out
+# class dense_block(nn.Module):
+#     def __init__(self, in_channel, out_channel):
+#         super(dense_block, self).__init__()
+#         model_dense_net = models.densenet121(pretrained=True)
+#         model_dense_net = list(model_dense_net.children())[:]
+#         self.dense_block = model_dense_net[0].denseblock1
+#         self.conv1 = nn.Conv2d(in_channels=in_channel, out_channels=64, kernel_size=7, padding=3)
+#         self.relu = nn.ReLU(True)
+#         # sequence = []
+#         sequence = [nn.Conv2d(256, 224, kernel_size = 1),
+#                         nn.ReLU(True),
+#                         nn.Conv2d(224, 192, kernel_size = 1),
+#                         nn.ReLU(True),
+#                         nn.Conv2d(192, 160, kernel_size = 1),
+#                         nn.ReLU(True),
+#                         nn.Conv2d(160, 128, kernel_size = 1),
+#                         nn.ReLU(True),
+#                         nn.Conv2d(128, 96, kernel_size = 1),
+#                         nn.ReLU(True),
+#                         nn.Conv2d(96, 64, kernel_size = 1),
+#                         nn.ReLU(True),
+#                         nn.Conv2d(64, 3, kernel_size = 1),
+#                         nn.Dropout2d()]
+#         self.down_conv = nn.Sequential(*sequence)
+#
+#     def forward(self, x):
+#         x = self.relu(self.conv1(x))
+#         dense_block = self.relu(self.dense_block(x))
+#         out = self.down_conv(dense_block)
+#
+#         return out
 ##################################################################################
 
 ##################################################################################
 # dense_block don't use pretrained
 ##################################################################################
-# class dense_block(nn.Module):
-#     def __init__(self, in_channel, up_channel=16, num_dense_layer=6):
-#         super(dense_block, self).__init__()
-#         in_chan = in_channel
-#         sequence = []
-#         for i in range(num_dense_layer):
-#             sequence.append(dense_layer(in_chan, up_channel))
-#             in_chan += up_channel
-#
-#         self.dense_block = nn.Sequential(*sequence)
-#         self.conv1 = nn.Conv2d(in_channels=in_chan, out_channels=in_channel, kernel_size=1)
-#
-#     def forward(self, x):
-#         dense_block = self.dense_block(x)
-#         out = self.conv1(dense_block)
-#         out = out + x
-#         return out
+class dense_block(nn.Module):
+    def __init__(self, in_channel, up_channel=32, num_dense_layer=4):
+        super(dense_block, self).__init__()
+        in_chan = in_channel
+        sequence_1 = []
+        for i in range(num_dense_layer):
+            sequence_1.append(dense_layer(in_chan, up_channel))
+            in_chan += up_channel
 
+        self.dense_block = nn.Sequential(*sequence_1)
+        sequence_2 = [nn.Conv2d(in_chan, in_chan//2, kernel_size=1),
+                    nn.ReLU(True),
+                    nn.Conv2d(in_chan//2, in_channel, kernel_size = 1),
+                    nn.Dropout2d()]
+        self.down_conv = nn.Sequential(*sequence_2)
+
+    def forward(self, x):
+        dense_block = self.dense_block(x)
+        out = self.down_conv(dense_block)
+        out = out + x
+        return out
 
 class dense_layer(nn.Module):
     def __init__(self, in_channel, up_channel):
@@ -278,19 +306,26 @@ class TransUNet(nn.Module):
     def __init__(self, in_channel, n_classes):
         super(TransUNet, self).__init__()
         self.conv1x1 = nn.Conv2d(in_channel, in_channel, kernel_size=1, stride=1, padding=0)
-        self.inc = inconv(in_channel, 64)
-        self.image_size = 256
-        self.down1 = down(64, 128)   # 112x112 | 256x256 | 512x512
-        self.down2 = down(128, 256)  # 56x56   | 128x128 | 256x256
-        self.down3 = down(256, 512)  # 28x28   | 64x64  | 128x128
-        self.down4 = down(512, 512)  # 14x14   | 32x32  | 64x64
+        # self.inc = inconv(in_channel, 64)
+        self.inc = nn.Sequential(
+            nn.Conv2d(in_channel, 32, 3, padding=1),
+            # nn.InstanceNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, 3, padding=1),
+            # nn.InstanceNorm2d(out_ch),
+            nn.ReLU(inplace=True)
+        )
+        self.image_size = 240
+        self.down1 = down(64, 128)
+        self.down2 = down(128, 128)
+        # self.down3 = down(256, 512)
+        # self.down4 = down(512, 512)
 
-        self.up1 = up(1024, 256)
-        self.up2 = up(512, 128)
+        # self.up1 = up(1024, 256)
+        # self.up2 = up(512, 128)
         self.up3 = up(256, 64)
         self.up4 = up(128, 32)
-        # self.up5 = up(64, 32)
-        self.outc = outconv(32, n_classes)
+        self.outc = nn.Conv2d(32, n_classes, kernel_size=1)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
 
@@ -299,14 +334,16 @@ class TransUNet(nn.Module):
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
+        # x4 = self.down3(x3)
+        # x5 = self.down4(x4)
         # decoder
-        x = self.up1(x5, x4)
-        x = self.up2(x, x3)
-        x = self.up3(x, x2)
+        # x = self.up1(x5, x4)
+        # x = self.up2(x, x3)
+        # x = self.up3(x, x2)
+        # x = self.up4(x, x1)
+        x = self.up3(x3, x2)
         x = self.up4(x, x1)
-        x = self.relu(self.outc(x))
+        x = self.tanh(self.outc(x))
         return x
 
 class double_conv(nn.Module):
@@ -315,10 +352,10 @@ class double_conv(nn.Module):
         super(double_conv, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_ch, out_ch, 3, padding=1),
-            ## nn.InstanceNorm2d(out_ch),
+            # nn.InstanceNorm2d(out_ch),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_ch, out_ch, 3, padding=1),
-            ## nn.InstanceNorm2d(out_ch),
+            # nn.InstanceNorm2d(out_ch),
             nn.ReLU(inplace=True)
         )
 
@@ -351,7 +388,7 @@ class down(nn.Module):
 
 
 class up(nn.Module):
-    def __init__(self, in_ch, out_ch, bilinear=True):
+    def __init__(self, in_ch, out_ch, bilinear=False):
         super(up, self).__init__()
 
         #  would be a nice idea if the upsampling could be learned too,
@@ -365,10 +402,9 @@ class up(nn.Module):
 
     def forward(self, x1, x2):
         x1 = self.up(x1)
-        diffX = x1.size()[2] - x2.size()[2]
-        diffY = x1.size()[3] - x2.size()[3]
-        x2 = F.pad(x2, (diffX // 2, int(diffX / 2),
-                        diffY // 2, int(diffY / 2)))
+        diffX = x2.size()[2] - x1.size()[2]
+        diffY = x2.size()[3] - x1.size()[3]
+        x1 = F.pad(x1, (0, diffY, 0, diffX))
         x = torch.cat([x2, x1], dim=1)
         x = self.conv(x)
         return x

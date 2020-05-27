@@ -203,8 +203,8 @@ class outdoor_rain_test(data.Dataset):
         self.file_tar_list = sorted(make_dataset(self.dir_tar))
 
         # self.file_list = sorted(make_dataset(apath))
-        self.transform = transforms.Compose([transforms.ToTensor(),
-                                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        # self.transform = transforms.Compose([transforms.ToTensor(),
+        #                                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.len = len(self.file_in_list)
 
     def __getitem__(self, idx):
