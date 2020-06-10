@@ -9,22 +9,45 @@ import glob
 from PIL import Image
 import torchvision.transforms as transforms
 
-def RGB_np2tensor(imgIn, imgTar, channel):
+def RGB_np2tensor(imgIn, imgTar, imgTarLR, channel):
     if channel == 1:
         # rgb --> Y (gray)
         imgIn = np.sum(imgIn * np.reshape([65.481, 128.553, 24.966], [1, 1, 3]) / 255.0, axis=2, keepdims=True) + 16.0
         imgTar = np.sum(imgTar * np.reshape([65.481, 128.553, 24.966], [1, 1, 3]) / 255.0, axis=2, keepdims=True) + 16.0
+        imgTarLR = np.sum(imgTarLR * np.reshape([65.481, 128.553, 24.966], [1, 1, 3]) / 255.0, axis=2, keepdims=True) + 16.0
 
     # to Tensor
     ts = (2, 0, 1)
     imgIn = torch.Tensor(imgIn.transpose(ts).astype(float)).mul_(1.0)
     imgTar = torch.Tensor(imgTar.transpose(ts).astype(float)).mul_(1.0)
+    imgTarLR = torch.Tensor(imgTarLR.transpose(ts).astype(float)).mul_(1.0)
 
     # normalization [-1,1]
-    imgIn = (imgIn/255.0 - 0.5) * 2
-    imgTar = (imgTar/255.0 - 0.5) * 2
+    # imgIn = (imgIn/255.0 - 0.5) * 2
+    # imgTar = (imgTar/255.0 - 0.5) * 2
 
-    return imgIn, imgTar
+    transform_list = [transforms.Normalize((0, 0, 0), (255, 255, 255)),
+                        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]
+    normalize = transforms.Compose(transform_list)
+    imgIn = normalize(imgIn)
+    imgTar = normalize(imgTar)
+    imgTarLR = normalize(imgTarLR)
+
+    return imgIn, imgTar, imgTarLR
+
+
+def RGB_np2tensor_kpt(keypoints_in, num_keypoints):
+    # to Tensor
+    ts = (2, 0, 1)
+    keypoints_in = torch.Tensor(keypoints_in.transpose(ts).astype(float)).mul_(1.0)
+
+    # normalization
+    transform_list = [transforms.Normalize((0, 0, 0)*num_keypoints, (255, 255, 255)*num_keypoints),
+                      transforms.Normalize((0.485, 0.456, 0.406)*num_keypoints, (0.229, 0.224, 0.225)*num_keypoints)]
+    normalize = transforms.Compose(transform_list)
+    keypoints_in = normalize(keypoints_in)
+
+    return keypoints_in
 
 def getPatch(imgIn, imgTar, args):
     (ih, iw, c) = imgIn.shape
@@ -114,10 +137,9 @@ class outdoor_rain_train(data.Dataset):
 
         self.file_in_list = sorted(make_dataset(self.dir_in))
         self.file_tar_list = sorted(make_dataset(self.dir_tar))
-        self.transform = get_transform(args)
+        # self.transform = get_transform(args)
         self.len = len(self.file_in_list)
         ###############
-
 
     def __getitem__(self, idx):
         args = self.args
@@ -140,9 +162,9 @@ class outdoor_rain_train(data.Dataset):
         # keypoints_tar_pos = np.uint16(np.asarray([p.pt for p in keypoints_tar_pos]))
         # keypoints_tar = get_keypoints(keypoints_tar_pos, img_tar, 32)
         #################################################
-        img_in, img_tar = RGB_np2tensor(img_in, img_tar, args.nchannel)
-        img_in_LR, keypoints_in = RGB_np2tensor(img_in_LR, keypoints_in, args.nchannel)
-        return img_in_LR, img_tar, keypoints_in
+        img_tar_LR, img_tar, img_in_LR = RGB_np2tensor(img_tar_LR, img_tar, img_in_LR, args.nchannel)
+        keypoints_in = RGB_np2tensor_kpt(keypoints_in, 128)
+        return img_in_LR, keypoints_in, img_tar_LR, img_tar
 
         #################### read dataset in JORDER
         # img_in = Image.open(self.file_in_list[idx]).convert("RGB")
@@ -228,16 +250,17 @@ class outdoor_rain_test(data.Dataset):
         img_in = cv2.imread(self.file_in_list[idx])
         img_in_LR = img_in[::2, ::2, :]
         img_tar = cv2.imread(self.file_tar_list[idx // 15])
+        img_tar_LR = img_tar[::2, ::2, :]
 
         mser = cv2.MSER_create()
         keypoints_in_pos = mser.detect(img_in_LR)
         keypoints_in_pos = np.uint16(np.asarray([p.pt for p in keypoints_in_pos]))
         keypoints_in = get_keypoints(keypoints_in_pos, img_in_LR, 16)
 
-        img_in, img_tar = RGB_np2tensor(img_in, img_tar, args.nchannel)
-        img_in_LR, keypoints_in = RGB_np2tensor(img_in_LR, keypoints_in, args.nchannel)
+        img_tar_LR, img_tar, img_in_LR = RGB_np2tensor(img_tar_LR, img_tar, img_in_LR, args.nchannel)
+        keypoints_in = RGB_np2tensor_kpt(keypoints_in, 128)
         ##################################################################
-        return img_in_LR, img_tar, keypoints_in
+        return img_in_LR, keypoints_in, img_tar_LR, img_tar
 
     def __len__(self):
         return self.len
@@ -275,7 +298,9 @@ def get_transform(opt):
             transform_list.append(transforms.RandomRotation((0,360)))
 
     transform_list += [transforms.ToTensor(),
-                       transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+                       # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+                        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]
+
     return transforms.Compose(transform_list)
 
 def __scale_width(img, target_width):

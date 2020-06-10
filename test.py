@@ -23,11 +23,11 @@ from skimage.measure import compare_ssim as ssim
 parser = argparse.ArgumentParser(description='Deraining')
 
 # validation data
-parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/val') # modifying to your SR_data folder path
+parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test') # modifying to your SR_data folder path
 # parser.add_argument('--rain_valDataroot', required=False, default='G:/DATASET/JORDER_DATASET/test/rain_data_test_Light') # modifying to your SR_data folder path
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_122.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_lastest.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')
@@ -89,23 +89,23 @@ def test(args):
     avg_psnr = 0
     avg_ssim = 0
     count = 0
-    for idx, (rain_img, clean_img, keypoints_in) in enumerate(test_dataloader):
+    for idx, (rain_img, keypoints_in, clean_img_LR, clean_img_HR) in enumerate(test_dataloader):
         count = count + 1
         with torch.no_grad():
             rain_img = Variable(rain_img.cuda(), volatile=False)
-            clean_img = Variable(clean_img.cuda())
+            clean_img_HR = Variable(clean_img_HR.cuda())
             keypoints_in = Variable(keypoints_in.cuda())
             output, out_combine, clean_layer, add_layer, mul_layer = my_model(rain_img, keypoints_in)
             #print(output.shape)
 
         output = output.cpu()
         output = output.data.squeeze(0)
-        clean_layer = clean_layer.cpu()
-        clean_layer = clean_layer.data.squeeze(0)
+        out_combine = out_combine.cpu()
+        out_combine = out_combine.data.squeeze(0)
         #print(output.shape)
         mean = [0.5, 0.5, 0.5]
         std = [0.5, 0.5, 0.5]
-        for t, t1, m, s in zip(output, clean_layer, mean, std):
+        for t, t1, m, s in zip(output[0], out_combine[0], mean, std):
             t.mul_(s).add_(m)
             t1.mul_(s).add_(m)
 
@@ -113,38 +113,38 @@ def test(args):
         output *= 255.0
         output = output.clip(0, 255)
         output = output.transpose(1, 2, 0)
-        clean_layer = clean_layer.numpy()
-        clean_layer *= 255.0
-        clean_layer = clean_layer.clip(0, 255)
-        clean_layer = clean_layer.transpose(1, 2, 0)
+        out_combine = out_combine.numpy()
+        out_combine *= 255.0
+        out_combine = out_combine.clip(0, 255)
+        out_combine = out_combine.transpose(1, 2, 0)
 
         out = np.uint8(output)
         # out_pil = Image.fromarray(out, mode='RGB')
         # out_pil.save('results/out_img/out_img_%04d.jpg' % (count))
         cv2.imwrite('results/out_img/out_img_%04d.jpg' %(count), out)
 
-        clean = np.uint8(clean_layer) # clean layer - output of network
+        comb = np.uint8(out_combine) # clean layer - output of network
         # clean_layer_pil = Image.fromarray(clean, mode='RGB')
         # clean_layer_pil.save('results/clean_img/clean_img_%04d.jpg' % (count))
-        cv2.imwrite('results/clean_img/clean_img_%04d.jpg' % (count), clean)
+        cv2.imwrite('results/clean_img/clean_img_%04d.jpg' % (count), comb)
 
         # =========== Target Image ===============
-        clean_img = clean_img.cpu()
-        clean_img = clean_img.data.squeeze(0)
+        clean_img_HR = clean_img_HR.cpu()
+        clean_img_HR = clean_img_HR.data.squeeze(0)
         mean = [0.5, 0.5, 0.5]
         std = [0.5, 0.5, 0.5]
-        for t, m, s in zip(clean_img, mean, std):
+        for t, m, s in zip(clean_img_HR, mean, std):
             t.mul_(s).add_(m)
 
-        clean_img = clean_img.numpy() # clean_img - ground truth
-        clean_img *= 255.0
-        clean_img = clean_img.clip(0, 255)
-        clean_img = clean_img.transpose(1, 2, 0)
-        clean_img = np.uint8(clean_img)
+        clean_img_HR = clean_img_HR.numpy() # clean_img - ground truth
+        clean_img_HR *= 255.0
+        clean_img_HR = clean_img_HR.clip(0, 255)
+        clean_img_HR = clean_img_HR.transpose(1, 2, 0)
+        clean_img_HR = np.uint8(clean_img_HR)
 
         # clean_img_pil = Image.fromarray(clean_img, mode='RGB')
         # clean_img_pil.save('results/GT/GT_%03d.png' %(count))
-        cv2.imwrite('results/GT/GT_%03d.png' %(count), clean_img)
+        cv2.imwrite('results/GT/GT_%03d.png' %(count), clean_img_HR)
 
         # output_shape = np.array(output).shape
         # if(np.array(clean_img).shape[0] > output_shape[0]):
@@ -152,11 +152,11 @@ def test(args):
         # if(np.array(clean_img).shape[1] > output_shape[1]):
         #     clean_img = np.delete(clean_img, -1, axis = 1)
 
-        mse = ((out - clean_img) ** 2).mean()
+        mse = ((out - clean_img_HR) ** 2).mean()
         psnr_val = 10 * log10(255 * 255 / (mse + 10 ** (-10)))
         avg_psnr += psnr_val
 
-        ssim_val = ssim(out, clean_img, data_range=255, multichannel=True, gaussian_weights=True)
+        ssim_val = ssim(out, clean_img_HR, data_range=255, multichannel=True, gaussian_weights=True)
         avg_ssim += ssim_val
         print('%03d_img: PSNR = %2.5f, SSIM = %2.5f'%(count, psnr_val, ssim_val))
 

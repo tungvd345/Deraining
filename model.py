@@ -14,20 +14,20 @@ class Deraining(nn.Module):
     def __init__(self,args):
         super(Deraining, self).__init__()
         self.args = args
-        self.upsample1 = nn.Upsample((self.args.patch_size // 2, self.args.patch_size // 4 * 3), mode = 'bilinear', align_corners=True) # input LR
+        # self.upsample1 = nn.Upsample((self.args.patch_size // 2, self.args.patch_size // 4 * 3), mode = 'bilinear', align_corners=True) # input LR
         self.upx2 = nn.Upsample(scale_factor=2, mode = 'bilinear', align_corners=True)
-        self.extractor = feature_extractor()
+        # self.extractor = feature_extractor()
         self.up_feature = up_feature(in_channels=128*3)
         # self.conv1 = nn.Conv2d(in_channels=128*3, out_channels=128, kernel_size=1)
-        self.afim = AFIM(in_channels=128, out_channels=128)
+        # self.afim = AFIM(in_channels=128, out_channels=128)
         self.ats_model = ATS_model(args, in_channels=3)
         self.operation_layer = operation_layer(in_channels=3)
 
         self.relu = nn.LeakyReLU(0.2, True)
-        self.last_layer = nn.Sequential(
-            nn.ConvTranspose2d(15, 3, kernel_size=1),
-            nn.Tanh(),
-        )
+        # self.last_layer = nn.Sequential(
+        #     nn.ConvTranspose2d(15, 3, kernel_size=1),
+        #     nn.Tanh(),
+        # )
         # self.channel_att = channel_attention(in_channels=128, out_channels=15)
         self.channel_att = channel_attention(in_channels=9)
         self.rcan = RCAN(args)
@@ -47,18 +47,10 @@ class Deraining(nn.Module):
         # atm, trans, streak = self.ats_model(features_clean)
         atm, trans, streak = self.ats_model(x)
         clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
-        # cleanx3 = torch.cat((clean, clean, clean), dim=1)
-        # cleanx3, _ = self.sa(cleanx3)
-        # clean = self.conv_oper(cleanx3)
 
         add_layer = self.operation_layer(features_add)
         add_layer = x + add_layer
 
-        # add_layerx3 = torch.cat((add_layer, add_layer, add_layer), dim=1)
-        # add_layerx3, _ = self.sa(add_layerx3)
-        # add_layer = self.conv_oper(add_layerx3)
-
-        # mul_layer = self.operation_layer(features_mul)
         mul_layer = self.operation_layer(features_add)
         mul_layer = x * mul_layer
 
@@ -73,9 +65,6 @@ class Deraining(nn.Module):
 
         # out_comb, att = self.sa(concatenates)
 
-        # out_comb = concatenates
-        # out_comb = self.last_layer(out_comb)
-
         # w0, w1, w2, w3, w4 = self.channel_att(concatenates)
         # out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer + w3 * add_layer + w4 * mul_layer
         w0, w1, w2 = self.channel_att(concatenates)
@@ -88,23 +77,25 @@ class Deraining(nn.Module):
         # mul_layer = upsample2(mul_layer)
 
         out_SR = self.rcan(out_comb)
-        out_combine = self.upx2(out_comb)
+        # out_combine = self.upx2(out_comb)
+        out_combine = out_comb
         return out_SR, out_combine, clean, add_layer, mul_layer
+        # return out_SR, out_combine, add_layer, add_layer, add_layer
 
 class ATS_model(nn.Module):
     def __init__(self, args, in_channels):
         super(ATS_model, self).__init__()
         self.conv1 = nn.Conv2d(in_channels = in_channels, out_channels = 64, kernel_size = 3, padding = 1)
-        self.batch_norm = nn.BatchNorm2d(64)
+        # self.batch_norm = nn.BatchNorm2d(64)
         self.relu1 = nn.LeakyReLU(0.2, True)
         self.conv2 = nn.Conv2d(in_channels = 64, out_channels = 128, kernel_size = 3, padding = 1)
-        self.pooling = nn.AvgPool2d(kernel_size = (3,3))
-        self.fc = nn.Linear(in_features = in_channels * (args.patch_size//6) * (args.patch_size//4), out_features = 3) # (patch*3//2) //3 = patch // 2
-        self.sigmoid = nn.Sigmoid()
+        # self.pooling = nn.AvgPool2d(kernel_size = (3,3))
+        # self.fc = nn.Linear(in_features = in_channels * (args.patch_size//6) * (args.patch_size//4), out_features = 3) # (patch*3//2) //3 = patch // 2
+        # self.sigmoid = nn.Sigmoid()
         self.predict_S = predict_S(in_channel=3, out_channel=3)
         self.predict_A = predict_A(128)
         self.predict_T = predict_T(in_channel=3, out_channel=3)
-        self.conv = nn.Conv2d(in_channels, out_channels=128, kernel_size=3, padding=1)
+        # self.conv = nn.Conv2d(in_channels, out_channels=128, kernel_size=3, padding=1)
 
     def forward(self,x):
         # T = self.predict_T(x)
@@ -220,7 +211,7 @@ class predict_A(nn.Module):
     def weight_init(m):
         if isinstance(m, nn.Conv2d):
             init.xavier_normal_(m.weight)
-            init.constant(m.bias, 0)
+            # init.constant(m.bias, 0)
 
     def reset_params(self):
         for i, m in enumerate(self.modules()):
@@ -309,10 +300,10 @@ class TransUNet(nn.Module):
         # self.inc = inconv(in_channel, 64)
         self.inc = nn.Sequential(
             nn.Conv2d(in_channel, 32, 3, padding=1),
-            # nn.InstanceNorm2d(out_ch),
+            nn.InstanceNorm2d(32),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 64, 3, padding=1),
-            # nn.InstanceNorm2d(out_ch),
+            nn.InstanceNorm2d(64),
             nn.ReLU(inplace=True)
         )
         self.image_size = 240
@@ -626,15 +617,17 @@ class operation_layer(nn.Module):
     def __init__(self, in_channels):
         super(operation_layer, self).__init__()
         self.conv1 = nn.Conv2d(in_channels = in_channels, out_channels = 64, kernel_size = 3, padding = 1)
-        self.batch_norm1 = nn.BatchNorm2d(64)
+        # self.batch_norm1 = nn.BatchNorm2d(64)
+        self.batch_norm1 = nn.InstanceNorm2d(64)
         self.relu1 = nn.LeakyReLU(0.2, True)
         self.conv2 = nn.Conv2d(in_channels = 64, out_channels = 3, kernel_size = 3, padding = 1)
-        self.batch_norm2 = nn.BatchNorm2d(3)
+        # self.batch_norm2 = nn.BatchNorm2d(3)
+        self.batch_norm2 = nn.InstanceNorm2d(3)
         self.relu2 = nn.ReLU(True)
 
     def forward(self, x):
         conv1 = self.relu1(self.batch_norm1(self.conv1(x)))
-        R_layer = self.relu2(self.batch_norm2(self.conv2(conv1)))
+        R_layer = self.relu1(self.batch_norm2(self.conv2(conv1)))
         return R_layer
 '''
 class mul_layer(nn.Module):

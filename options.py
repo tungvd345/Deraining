@@ -16,7 +16,7 @@ class TrainOptions():
 		self.parser.add_argument('--save_dir', default='./save', help='datasave directory')
 
 		self.parser.add_argument('--val_data_dir', default='D:/DATASETS/Heavy_rain_image_cvpr2019/val_301_350', help='val data directory')
-		self.parser.add_argument('--val_batch_size', type=int, default=8)
+		self.parser.add_argument('--val_batch_size', type=int, default=1)
 
 		self.parser.add_argument('--load', default='Deraining', help='save result')
 		self.parser.add_argument('--model_name', default='Deraining', help='model to select')
@@ -24,6 +24,7 @@ class TrainOptions():
 		self.parser.add_argument('--pretrained_model', default='save/Deraining/model/model_lastest.pt', help='save result - model to start finetune')
 
 		self.parser.add_argument('--nchannel', type=int, default=3, help ='number of color channel to use')
+		# self.parser.add_argument('--nkeypoint', type=int, default=128, help='number of keypoints to use')
 		self.parser.add_argument('--loadSizeX', type=int, default=1024, help='scale images to this size')
 		self.parser.add_argument('--loadSizeY', type=int, default=1024, help='scale images to this size')
 		self.parser.add_argument('--fineSize', type=int, default=512, help='then crop to this size')
@@ -32,11 +33,11 @@ class TrainOptions():
 
 		self.parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
 		self.parser.add_argument('--batch_size', type=int, default=4, help='input batch size for training')
-		self.parser.add_argument('--lr', type=float, default=3e-4, help='learning rate')
+		self.parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 		self.parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train')
 		self.parser.add_argument('--lrDecay', type=int, default=100, help='epoch of half lr')
 		self.parser.add_argument('--decayType', default='inv', help='lr decay function')
-		self.parser.add_argument('--lossType', default='L1', help='Loss type')
+		self.parser.add_argument('--lossType', default='MSE', help='Loss type')
 
 		self.parser.add_argument('--period', type=int, default=1, help='period of evaluation')
 		self.parser.add_argument('--gpu', type=int, default=0, help='gpu index')

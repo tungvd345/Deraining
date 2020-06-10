@@ -4,6 +4,8 @@
 # 2020-03-11
 # --------------------------
 from __future__ import print_function
+from torch.utils.tensorboard import SummaryWriter
+import torchvision.transforms as transforms
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -53,25 +55,34 @@ def set_loss(opt):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def test(args, model, dataloader):
+# writer = SummaryWriter()
+def test(opt, model, dataloader):
     # print('test-------------')
     avg_psnr = 0
-    mse = mse1 = psnr = psnr1 = np.zeros(args.val_batch_size)
+    mse = mse1 = psnr = psnr1 = np.zeros(opt.val_batch_size)
     avg_psnr1 = 0
     psnr_val = 0
+    loss_val = 0
     ###############################################
     # writer = SummaryWriter()
     # dataiter = iter(dataloader)
-    # # rain_img_tb, clean_img_tb = dataiter.next()
+    # rain_img_tr_tb, keypoints_tr_tb, clean_img_LR_tr_tb, clean_img_tr_tb  = dataiter.next()
     ###############################################
 
-    for idx, (rain_img, clean_img, keypoints_in) in enumerate(dataloader):
+    for idx, (rain_img, keypoints_in, clean_img_LR, clean_img_HR) in enumerate(dataloader):
         # print('inx:', batch)
         with torch.no_grad():
             rain_img = Variable(rain_img.cuda(), volatile=False)
-            clean_img = Variable(clean_img.cuda())
             keypoints_in = Variable(keypoints_in.cuda())
+            clean_img_LR = Variable(clean_img_LR.cuda())
+            clean_img_HR = Variable(clean_img_HR.cuda())
             output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img, keypoints_in)
+
+        loss_function = set_loss(opt)
+        loss_function.cuda()
+        loss = loss_function(output, clean_img_HR)
+        loss_stage1 = loss_function(out_combine, clean_img_LR)
+        loss_val += (loss_stage1 + loss).cpu().numpy()
 
         output = output.cpu()
         output = output.data.squeeze(0)
@@ -79,8 +90,8 @@ def test(args, model, dataloader):
         out_combine = out_combine.data.squeeze(0)
 
         # denormalization
-        mean = [0.5, 0.5, 0.5]
-        std = [0.5, 0.5, 0.5]
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
         for t,t1, m, s in zip(output, out_combine, mean, std):
             t.mul_(s).add_(m)
             t1.mul_(s).add_(m)
@@ -94,37 +105,34 @@ def test(args, model, dataloader):
         # output = Image.fromarray(np.uint8(output[0]), mode='RGB')
 
         # =========== Target Image ===============
-        clean_img = clean_img.cpu()
-        clean_img = clean_img.data.squeeze(0)
-        mean = [0.5, 0.5, 0.5]
-        std = [0.5, 0.5, 0.5]
-        for t, m, s in zip(clean_img, mean, std):
-            t.mul_(s).add_(m)
+        clean_img_HR = clean_img_HR.cpu()
+        clean_img_HR = clean_img_HR.data.squeeze(0)
+        clean_img_LR = clean_img_LR.cpu()
+        clean_img_LR = clean_img_LR.data.squeeze(0)
+        for t1, t2, m, s in zip(clean_img_HR, clean_img_LR, mean, std):
+            t1.mul_(s).add_(m)
+            t2.mul_(s).add_(m)
 
-        clean_img = clean_img.numpy()
-        clean_img *= 255.0
-        clean_img = clean_img.clip(0, 255)
+        clean_img_HR = clean_img_HR.numpy()
+        clean_img_HR *= 255.0
+        clean_img_HR = clean_img_HR.clip(0, 255)
         # im_hr = Image.fromarray(np.uint8(im_hr[0]), mode='RGB')
+        clean_img_LR = clean_img_LR.numpy()
+        clean_img_LR *= 255.0
+        clean_img_LR = clean_img_LR.clip(0, 255)
 
-        ###############################
-        # if idx < 2:
-        #     writer.add_image('test rain image', np.uint8(output), idx)
-        #     writer.add_image('test rain1 image', np.uint8(clean_layer), idx)
-        #     writer.add_image('test clean image', np.uint8(clean_img), idx)
-        #     writer.close()
-        ################################
-        for i in range(args.val_batch_size):
-            mse[i] = ((clean_img[i, :, 8:-8,8:-8] - output[i, :, 8:-8,8:-8]) ** 2).mean()
-            psnr[i] = 10 * log10(255 * 255 / (mse[i] + 10 ** (-10)))
-            avg_psnr += psnr[i]
+        mse = ((clean_img_HR[:, 8:-8,8:-8] - output[:, 8:-8,8:-8]) ** 2).mean()
+        psnr = 10 * log10(255 * 255 / (mse + 10 ** (-10)))
+        avg_psnr += psnr
 
-            mse1[i] = ((clean_img[i, :, 8:-8, 8:-8] - out_combine[i, :, 8:-8, 8:-8]) ** 2).mean()
-            psnr1[i] = 10 * log10(255 * 255 / (mse1[i] + 10 ** (-10)))
-            avg_psnr1 += psnr1[i]
+        mse1 = ((clean_img_LR[:, 8:-8, 8:-8] - out_combine[:, 8:-8, 8:-8]) ** 2).mean()
+        psnr1 = 10 * log10(255 * 255 / (mse1 + 10 ** (-10)))
+        avg_psnr1 += psnr1
 
-    avg_psnr = avg_psnr / (args.val_batch_size*len(dataloader))
-    avg_psnr1 = avg_psnr1 / (args.val_batch_size*len(dataloader))
-    return avg_psnr, avg_psnr1
+    total_loss_val = loss_val / ((idx + 1) * opt.batch_size)
+    avg_psnr = avg_psnr / (opt.val_batch_size * len(dataloader))
+    avg_psnr1 = avg_psnr1 / (opt.val_batch_size * len(dataloader))
+    return avg_psnr, avg_psnr1, total_loss_val
 
 def train(opt, train_dataloader, test_dataloader, model):
     model = nn.DataParallel(model)
@@ -145,11 +153,22 @@ def train(opt, train_dataloader, test_dataloader, model):
     total_loss = 0
     total_time = 0
 
+
     #########################
-    writer_t = SummaryWriter()
-    dataiter = iter(train_dataloader)
-    rain_img_tb, clean_img_tb, keypoints_tb = dataiter.next()
-    # img_grid = torchvision.utils.make_grid(rain_img)
+    writer = SummaryWriter()
+    dataiter_tr = iter(train_dataloader) # train dataset
+    rain_img_tr_tb, keypoints_tr_tb, clean_img_LR_tr_tb, clean_img_tr_tb = dataiter_tr.next() #tensorboard
+    dataiter_val = iter(test_dataloader) # val dataset
+    rain_img_val_tb, keypoints_val_tb, clean_img_LR_val_tb, clean_img_val_tb = dataiter_val.next() #tensorboard
+
+    # transform_list = [transforms.Normalize((-0.485/0.229, -0.456/0.224, -0.406/0.225), (1/0.229, 1/0.224, 1/0.225))]
+    #                    # transforms.Normalize((0, 0, 0), (1/255, 1/255, 1/255))]
+    # denormalize = transforms.Compose(transform_list)
+    # for i in range(tmp):
+    #     clean_tmp[i] = denormalize(clean_img_tr_tb[i])
+    #     rain_tmp[i] = denormalize(rain_img_tr_tb[i])
+    # writer.add_images('image', clean_tmp, 0)
+    # writer.add_images('image', rain_tmp, 1)
     ##########################
     for epoch in range(start_epoch, opt.epochs):
         start = time.time()
@@ -158,23 +177,25 @@ def train(opt, train_dataloader, test_dataloader, model):
         total_loss_ = 0
         loss_ = 0
 
-        for idx, (rain_img, clean_image, keypoints_in) in enumerate(train_dataloader):
+        for idx, (rain_img, keypoints_in, clean_image_LR, clean_image_HR) in enumerate(train_dataloader):
             # print('*'*10)
             rain_img = Variable(rain_img.cuda())
-            clean_image = Variable(clean_image.cuda())
             keypoints_in = Variable(keypoints_in.cuda())
+            clean_image_LR = Variable(clean_image_LR.cuda())
+            clean_image_HR = Variable(clean_image_HR.cuda())
 
             model.zero_grad()
             output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img, keypoints_in)
 
-            loss = loss_function(output, clean_image)
+            loss = loss_function(output, clean_image_HR)
+            loss_stage1 = loss_function(out_combine, clean_image_LR)
             # loss_clean = loss_function(clean_layer, clean_image)
             # loss_add = loss_function(add_layer, clean_image)
             # loss_mul = loss_function(mul_layer, clean_image)
             # print('out img', output)
             # print(clean_image)
             # total_loss = loss + loss_clean + loss_add + loss_mul
-            total_loss = loss
+            total_loss = loss + loss_stage1
             total_loss.backward()
             optimizer.step()
 
@@ -184,15 +205,27 @@ def train(opt, train_dataloader, test_dataloader, model):
         with torch.no_grad():
             # loss_ = loss_ / (idx * opt.batch_size)
             total_loss_ = total_loss_ / ((idx + 1) * opt.batch_size)
-            writer_t.add_scalar('Loss', total_loss_, epoch + 1)
+            writer.add_scalar('Loss', total_loss_, epoch + 1)
 
             #############################################
-            rain_img_tb = rain_img_tb.cuda()
-            clean_img_tb = clean_img_tb.cuda()
-            keypoints_tb = keypoints_tb.cuda()
-            output_tb, _, _, _, _ = model(rain_img_tb, keypoints_tb)
-            writer_t.add_images('rain image', output_tb, epoch)
-            writer_t.add_images('clean image', clean_img_tb, epoch)
+            rain_img_val_tb = rain_img_val_tb.cuda()
+            # clean_img_val_tb = clean_img_val_tb.cuda()
+            keypoints_val_tb = keypoints_val_tb.cuda()
+            output_val_tb, _, _, _, _ = model(rain_img_val_tb, keypoints_val_tb)
+
+            clean_tmp = clean_img_val_tb
+            output_tmp = output_val_tb
+            mean = [0.485, 0.456, 0.406]
+            std = [0.229, 0.224, 0.225]
+            tmp = clean_tmp.size(0)
+            for i in range(tmp):
+                for t1, t2, m, s in zip(clean_tmp[i], output_tmp[i], mean, std):
+                    t1.mul_(s).add_(m)
+                    t2.mul_(s).add_(m)
+
+            writer.add_images('rain image', (output_tmp), epoch+1)
+            writer.add_images('clean image', (clean_tmp), epoch+1)
+
             ############################################
 
             end = time.time()
@@ -201,17 +234,19 @@ def train(opt, train_dataloader, test_dataloader, model):
 
             if(epoch + 1) % opt.period == 0:
                 model.eval()
-                avg_psnr, avg_psnr1 = test(opt, model, test_dataloader)
-                writer_t.add_scalar('PSNR', avg_psnr, epoch+1)
-                writer_t.add_scalar('PSNR1', avg_psnr1, epoch+1)
+                avg_psnr, avg_psnr1, loss_val = test(opt, model, test_dataloader)
+                writer.add_scalar('Loss_Val', loss_val, epoch + 1)
+                writer.add_scalar('PSNR', avg_psnr, epoch+1)
+                writer.add_scalar('PSNR1', avg_psnr1, epoch+1)
+
                 model.train()
-                log = "[{} / {}] \tLearning_rate: {:.8f}\t Train total_loss: {:.4f}\t Train Loss: {:.4f} \t Val PSNR: {:.4f} \t Val PSNR1: {:.4f} Time: {:.4f}".format(
-                    epoch + 1, opt.epochs, learning_rate, total_loss_, total_loss_, avg_psnr, avg_psnr1, total_time)
+                log = "[{} / {}] \tLearning_rate: {:.8f}\t Train total_loss: {:.4f}\t Val Loss: {:.4f} \t Val PSNR: {:.4f} \t Val PSNR1: {:.4f} Time: {:.4f}".format(
+                    epoch + 1, opt.epochs, learning_rate, total_loss_, loss_val, avg_psnr, avg_psnr1, total_time)
                 print(log)
                 save.save_log(log)
                 save.save_model(model, epoch)
                 total_time = 0
-    writer_t.close()
+    writer.close()
 
 if __name__ == '__main__':
 
@@ -231,7 +266,6 @@ if __name__ == '__main__':
     from model import Deraining
     from data import outdoor_rain_train, outdoor_rain_test
     from options import TrainOptions
-    from torch.utils.tensorboard import SummaryWriter
 
     opt = TrainOptions().parse()
     model = Deraining(opt)
