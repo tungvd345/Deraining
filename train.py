@@ -90,8 +90,10 @@ def test(opt, model, dataloader):
         out_combine = out_combine.data.squeeze(0)
 
         # denormalization
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
+        # mean = [0.485, 0.456, 0.406]
+        # std = [0.229, 0.224, 0.225]
+        mean = [0.5, 0.5, 0.5]
+        std = [0.5, 0.5, 0.5]
         for t,t1, m, s in zip(output, out_combine, mean, std):
             t.mul_(s).add_(m)
             t1.mul_(s).add_(m)
@@ -143,6 +145,11 @@ def train(opt, train_dataloader, test_dataloader, model):
     Numparams = count_parameters(model)
     print('Number of param = ', Numparams)
 
+    vgg = Vgg16()
+    vgg.cuda()
+    mse_loss = nn.MSELoss()
+    mse_loss.cuda()
+
     last_epoch = 0
     # if opt.finetuning:
     #     model.load_state_dict(torch.load(opt.pretrained_model))
@@ -189,13 +196,16 @@ def train(opt, train_dataloader, test_dataloader, model):
 
             loss = loss_function(output, clean_image_HR)
             loss_stage1 = loss_function(out_combine, clean_image_LR)
+            feature_output = vgg(output)
+            feature_GT_HR = vgg(clean_image_HR)
+            loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
             # loss_clean = loss_function(clean_layer, clean_image)
             # loss_add = loss_function(add_layer, clean_image)
             # loss_mul = loss_function(mul_layer, clean_image)
             # print('out img', output)
             # print(clean_image)
             # total_loss = loss + loss_clean + loss_add + loss_mul
-            total_loss = loss + loss_stage1
+            total_loss = loss + loss_stage1 + loss_vgg
             total_loss.backward()
             optimizer.step()
 
@@ -215,19 +225,19 @@ def train(opt, train_dataloader, test_dataloader, model):
 
             clean_tmp = clean_img_val_tb
             output_tmp = output_val_tb
-            mean = [0.485, 0.456, 0.406]
-            std = [0.229, 0.224, 0.225]
+            mean = [0.5, 0.5, 0.5]
+            std = [0.5, 0.5, 0.5]
             tmp = clean_tmp.size(0)
             for i in range(tmp):
                 for t1, t2, m, s in zip(clean_tmp[i], output_tmp[i], mean, std):
                     t1.mul_(s).add_(m)
                     t2.mul_(s).add_(m)
 
-            writer.add_images('rain image', (output_tmp), epoch+1)
-            writer.add_images('clean image', (clean_tmp), epoch+1)
+            permute = [2, 1, 0] # permute RGB --> BGR
+            writer.add_images('rain image', output_tmp[:, permute, :, :], epoch+1)
+            writer.add_images('clean image', clean_tmp[:, permute, :, :], epoch+1)
 
             ############################################
-
             end = time.time()
             epoch_time = (end - start)
             total_time = total_time + epoch_time
@@ -261,6 +271,7 @@ if __name__ == '__main__':
     import math
     from math import log10
     import time
+    import cv2
 
     from helper import *
     from model import Deraining

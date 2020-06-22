@@ -298,31 +298,31 @@ class TransUNet(nn.Module):
         super(TransUNet, self).__init__()
         self.conv1x1 = nn.Conv2d(in_channel, in_channel, kernel_size=1, stride=1, padding=0)
         # self.inc = inconv(in_channel, 64)
-        self.inc = nn.Sequential(
+        self.inconv = nn.Sequential(
             nn.Conv2d(in_channel, 32, 3, padding=1),
-            nn.InstanceNorm2d(32),
+            # nn.InstanceNorm2d(32),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 64, 3, padding=1),
-            nn.InstanceNorm2d(64),
+            # nn.InstanceNorm2d(64),
             nn.ReLU(inplace=True)
         )
         self.image_size = 240
         self.down1 = down(64, 128)
         self.down2 = down(128, 128)
-        # self.down3 = down(256, 512)
+        # self.down3 = down(256, 256)
         # self.down4 = down(512, 512)
 
         # self.up1 = up(1024, 256)
         # self.up2 = up(512, 128)
         self.up3 = up(256, 64)
         self.up4 = up(128, 32)
-        self.outc = nn.Conv2d(32, n_classes, kernel_size=1)
+        self.outconv = nn.Conv2d(32, n_classes, kernel_size=1)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
 
     def forward(self, x):
         x = self.conv1x1(x)
-        x1 = self.inc(x)
+        x1 = self.inconv(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         # x4 = self.down3(x3)
@@ -332,9 +332,10 @@ class TransUNet(nn.Module):
         # x = self.up2(x, x3)
         # x = self.up3(x, x2)
         # x = self.up4(x, x1)
+        # x = self.up2(x4, x3)
         x = self.up3(x3, x2)
         x = self.up4(x, x1)
-        x = self.tanh(self.outc(x))
+        x = self.tanh(self.outconv(x))
         return x
 
 class double_conv(nn.Module):
@@ -354,23 +355,18 @@ class double_conv(nn.Module):
         x = self.conv(x)
         return x
 
-
-class inconv(nn.Module):
-    def __init__(self, in_ch, out_ch):
-        super(inconv, self).__init__()
-        self.conv = double_conv(in_ch, out_ch)
-
-    def forward(self, x):
-        x = self.conv(x)
-        return x
-
-
 class down(nn.Module):
     def __init__(self, in_ch, out_ch):
         super(down, self).__init__()
         self.mpconv = nn.Sequential(
-            nn.MaxPool2d(2),
-            double_conv(in_ch, out_ch)
+            # nn.MaxPool2d(2),
+            # double_conv(in_ch, out_ch)
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(True),
+            nn.Conv2d(out_ch, out_ch, kernel_size=1),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(True)
         )
 
     def forward(self, x):
@@ -401,14 +397,14 @@ class up(nn.Module):
         return x
 
 
-class outconv(nn.Module):
-    def __init__(self, in_ch, out_ch):
-        super(outconv, self).__init__()
-        self.conv = nn.Conv2d(in_ch, out_ch, 1)
-
-    def forward(self, x):
-        x = self.conv(x)
-        return x
+# class outconv(nn.Module):
+#     def __init__(self, in_ch, out_ch):
+#         super(outconv, self).__init__()
+#         self.conv = nn.Conv2d(in_ch, out_ch, 1)
+#
+#     def forward(self, x):
+#         x = self.conv(x)
+#         return x
 ##################################################################################
 
 ##################################################################################
@@ -629,19 +625,7 @@ class operation_layer(nn.Module):
         conv1 = self.relu1(self.batch_norm1(self.conv1(x)))
         R_layer = self.relu1(self.batch_norm2(self.conv2(conv1)))
         return R_layer
-'''
-class mul_layer(nn.Module):
-    def __init__(self, img_in, in_channels):
-        super(mul_layer, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels = in_channels, out_channels = 64, kernel_size = 3, padding = 1)
-        self.relu = nn.LeakyReLU(0.2, True)
-        self.conv2 = nn.Conv2d(in_channels = 64, out_channels = 3, kernel_size = 3, padding =1)
 
-    def forward(self, x):
-        conv1 = self.relu(self.conv1(x))
-        R1 = self.conv2(conv1)
-        return img_in * R1
-'''
 # class AFIM is same in 'deep multi model fusion' paper
 class AFIM(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -733,13 +717,11 @@ class RCAN(nn.Module):
     def __init__(self, args):
         super(RCAN, self).__init__()
         nChannel = args.nchannel
-        # nFeat = args.nFeat
         scale = args.scale
         self.args = args
 
         # Define Network
         # ===========================================
-
         self.relu = nn.ReLU()
         self.conv1 = nn.Conv2d(nChannel, 64, kernel_size=7, padding=3)
         self.RG1 = residual_group(64, 64)
@@ -749,7 +731,7 @@ class RCAN(nn.Module):
         self.conv3 = nn.Conv2d(64, 256, kernel_size=3, padding=1)
         self.pixel_shuffle = nn.PixelShuffle(scale)
         self.conv4 = nn.Conv2d(256 // (scale * scale), 3, kernel_size=7, padding=3)
-
+        # self.reset_params()
         # ===========================================
 
     def forward(self, x):
@@ -766,9 +748,18 @@ class RCAN(nn.Module):
         x = self.pixel_shuffle(x)
         x = self.relu(x)
         x = self.conv4(x)
-
         # ===========================================
         return x
+
+    # @staticmethod
+    # def weight_init(m):
+    #     if isinstance(m, nn.Conv2d):
+    #         init.xavier_normal_(m.weight)
+    #         # init.constant(m.bias, 0)
+    #
+    # def reset_params(self):
+    #     for i, m in enumerate(self.modules()):
+    #         self.weight_init(m)
 
 
 class residual_group(nn.Module):
@@ -790,6 +781,7 @@ class RCAB(nn.Module):
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.ca_block = CA_block(64, out_channels)
+        # self.reset_params()
 
     def forward(self, x):
         conv1 = self.conv1(x)
@@ -798,6 +790,15 @@ class RCAB(nn.Module):
         ca = self.ca_block(conv2)
         return x + ca
 
+    # @staticmethod
+    # def weight_init(m):
+    #     if isinstance(m, nn.Conv2d):
+    #         init.xavier_normal_(m.weight)
+    #         # init.constant(m.bias, 0)
+    #
+    # def reset_params(self):
+    #     for i, m in enumerate(self.modules()):
+    #         self.weight_init(m)
 
 class CA_block(nn.Module):
     def __init__(self, in_channels, out_channels):

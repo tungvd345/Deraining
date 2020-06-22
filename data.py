@@ -27,7 +27,7 @@ def RGB_np2tensor(imgIn, imgTar, imgTarLR, channel):
     # imgTar = (imgTar/255.0 - 0.5) * 2
 
     transform_list = [transforms.Normalize((0, 0, 0), (255, 255, 255)),
-                        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]
+                        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     normalize = transforms.Compose(transform_list)
     imgIn = normalize(imgIn)
     imgTar = normalize(imgTar)
@@ -43,7 +43,7 @@ def RGB_np2tensor_kpt(keypoints_in, num_keypoints):
 
     # normalization
     transform_list = [transforms.Normalize((0, 0, 0)*num_keypoints, (255, 255, 255)*num_keypoints),
-                      transforms.Normalize((0.485, 0.456, 0.406)*num_keypoints, (0.229, 0.224, 0.225)*num_keypoints)]
+                      transforms.Normalize((0.5, 0.5, 0.5)*num_keypoints, (0.5, 0.5, 0.5)*num_keypoints)]
     normalize = transforms.Compose(transform_list)
     keypoints_in = normalize(keypoints_in)
 
@@ -144,7 +144,9 @@ class outdoor_rain_train(data.Dataset):
     def __getitem__(self, idx):
         args = self.args
         img_in = cv2.imread(self.file_in_list[idx])
+        # img_in = cv2.cvtColor(img_in, cv2.COLOR_RGB2BGR)
         img_tar = cv2.imread(self.file_tar_list[idx//15])
+        # img_tar = cv2.cvtColor(img_tar, cv2.COLOR_RGB2BGR)
         img_in, img_tar = augment(img_in, img_tar)
         img_in_LR = img_in[::2, ::2, :]
         img_tar_LR = img_tar[::2, ::2, :]
@@ -248,8 +250,10 @@ class outdoor_rain_test(data.Dataset):
 
         ##################### use cv2 image
         img_in = cv2.imread(self.file_in_list[idx])
+        # img_in = cv2.cvtColor(img_in, cv2.COLOR_RGB2BGR)
         img_in_LR = img_in[::2, ::2, :]
         img_tar = cv2.imread(self.file_tar_list[idx // 15])
+        # img_tar = cv2.cvtColor(img_tar, cv2.COLOR_RGB2BGR)
         img_tar_LR = img_tar[::2, ::2, :]
 
         mser = cv2.MSER_create()
@@ -298,8 +302,8 @@ def get_transform(opt):
             transform_list.append(transforms.RandomRotation((0,360)))
 
     transform_list += [transforms.ToTensor(),
-                       # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-                        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]
+                       transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+                        # transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]
 
     return transforms.Compose(transform_list)
 

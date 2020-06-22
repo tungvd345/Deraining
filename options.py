@@ -37,7 +37,7 @@ class TrainOptions():
 		self.parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train')
 		self.parser.add_argument('--lrDecay', type=int, default=100, help='epoch of half lr')
 		self.parser.add_argument('--decayType', default='inv', help='lr decay function')
-		self.parser.add_argument('--lossType', default='MSE', help='Loss type')
+		self.parser.add_argument('--lossType', default='L1', help='Loss type')
 
 		self.parser.add_argument('--period', type=int, default=1, help='period of evaluation')
 		self.parser.add_argument('--gpu', type=int, default=0, help='gpu index')
