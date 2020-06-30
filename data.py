@@ -109,7 +109,7 @@ def make_dataset(dir):
 class outdoor_rain_train(data.Dataset):
     def __init__(self, args):
         self.args = args
-        self.crop = transforms.RandomCrop(args.patch_size)
+        # self.crop = transforms.RandomCrop(args.patch_size)
         apath = args.data_dir
 
         ''' read data base on os.path
@@ -144,14 +144,13 @@ class outdoor_rain_train(data.Dataset):
     def __getitem__(self, idx):
         args = self.args
         img_in = cv2.imread(self.file_in_list[idx])
-        # img_in = cv2.cvtColor(img_in, cv2.COLOR_RGB2BGR)
         img_tar = cv2.imread(self.file_tar_list[idx//15])
-        # img_tar = cv2.cvtColor(img_tar, cv2.COLOR_RGB2BGR)
+        if args.need_patch:
+            img_in, img_tar = getPatch(img_in, img_tar, self.args)
         img_in, img_tar = augment(img_in, img_tar)
         img_in_LR = img_in[::2, ::2, :]
         img_tar_LR = img_tar[::2, ::2, :]
-        # if args.need_patch:
-        #     img_in, img_tar = getPatch(img_in, img_tar, self.args)
+
 
         #################################################
 
@@ -250,10 +249,8 @@ class outdoor_rain_test(data.Dataset):
 
         ##################### use cv2 image
         img_in = cv2.imread(self.file_in_list[idx])
-        # img_in = cv2.cvtColor(img_in, cv2.COLOR_RGB2BGR)
         img_in_LR = img_in[::2, ::2, :]
         img_tar = cv2.imread(self.file_tar_list[idx // 15])
-        # img_tar = cv2.cvtColor(img_tar, cv2.COLOR_RGB2BGR)
         img_tar_LR = img_tar[::2, ::2, :]
 
         mser = cv2.MSER_create()

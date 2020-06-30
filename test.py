@@ -11,7 +11,7 @@ import torch.optim as optim
 import math
 from math import log10
 
-from model import Deraining
+from model_tmp import Deraining
 from data import outdoor_rain_test, outdoor_rain_train
 from helper import *
 import time
@@ -24,11 +24,11 @@ from skimage.measure import compare_ssim as ssim
 parser = argparse.ArgumentParser(description='Deraining')
 
 # validation data
-parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/val_301_350') # modifying to your SR_data folder path
+parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param') # modifying to your SR_data folder path
 # parser.add_argument('--rain_valDataroot', required=False, default='G:/DATASET/JORDER_DATASET/test/rain_data_test_Light') # modifying to your SR_data folder path
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_38.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_36.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')
@@ -39,6 +39,7 @@ parser.add_argument('--fineSize', type=int, default=512, help='then crop to this
 parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
 parser.add_argument('--gpu', type=int, default=0, help='gpu index')
 parser.add_argument('--scale', type=int, default=2, help='scale output size /input size')
+parser.add_argument('--phase', type=str, default='test', help='train, val, test, etc')
 
 args = parser.parse_args()
 
@@ -86,21 +87,23 @@ def test(args):
 
     test_dataloader = get_testdataset(args)
     ###############################################
-    writer = SummaryWriter()
-    dataiter_test = iter(test_dataloader)
-    rain_img_test_tb, keypoints_test_tb, clean_img_LR_test_tb, clean_img_test_tb = dataiter_test.next() #tensorboard
+    # writer = SummaryWriter()
+    # dataiter_test = iter(test_dataloader)
+    # rain_img_test_tb, keypoints_test_tb, clean_img_LR_test_tb, clean_img_test_tb = dataiter_test.next() #tensorboard
     ################################################
     my_model.eval()
 
     avg_psnr = 0
     avg_ssim = 0
     count = 0
+
     for idx, (rain_img, keypoints_in, clean_img_LR, clean_img_HR) in enumerate(test_dataloader):
         count = count + 1
         with torch.no_grad():
             rain_img = Variable(rain_img.cuda(), volatile=False)
             clean_img_HR = Variable(clean_img_HR.cuda())
             keypoints_in = Variable(keypoints_in.cuda())
+
             output, out_combine, clean_layer, add_layer, mul_layer = my_model(rain_img, keypoints_in)
             #print(output.shape)
 
@@ -113,7 +116,7 @@ def test(args):
         # std = [0.229, 0.224, 0.225]
         mean = [0.5, 0.5, 0.5]
         std = [0.5, 0.5, 0.5]
-        for t, t1, m, s in zip(output[0], out_combine[0], mean, std):
+        for t, t1, m, s in zip(output, out_combine, mean, std):
             t.mul_(s).add_(m)
             t1.mul_(s).add_(m)
 
@@ -129,12 +132,12 @@ def test(args):
         out = np.uint8(output)
         # out_pil = Image.fromarray(out, mode='RGB')
         # out_pil.save('results/out_img/out_img_%04d.jpg' % (count))
-        cv2.imwrite('results/out_img/out_img_%04d.jpg' %(count), out)#cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+        cv2.imwrite('results/out_img/out_img_%04d.png' %(count), out)#cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
 
         comb = np.uint8(out_combine) # clean layer - output of network
         # clean_layer_pil = Image.fromarray(clean, mode='RGB')
         # clean_layer_pil.save('results/clean_img/clean_img_%04d.jpg' % (count))
-        cv2.imwrite('results/clean_img/clean_img_%04d.jpg' % (count), comb)#cv2.cvtColor(comb, cv2.COLOR_BGR2RGB))
+        cv2.imwrite('results/clean_img/clean_img_%04d.png' % (count), comb)#cv2.cvtColor(comb, cv2.COLOR_BGR2RGB))
 
         # =========== Target Image ===============
         clean_img_HR = clean_img_HR.cpu()
@@ -151,8 +154,8 @@ def test(args):
         # clean_img_pil = Image.fromarray(clean_img, mode='RGB')
         # clean_img_pil.save('results/GT/GT_%03d.png' %(count))
         cv2.imwrite('results/GT/GT_%03d.png' %(count), clean_img_HR)
-        if (idx < 10):
-            writer.add_image('GT test image', cv2.cvtColor(clean_img_HR, cv2.COLOR_RGB2BGR), idx, dataformats="HWC")
+        # if (idx < 10):
+        #     writer.add_image('GT test image', cv2.cvtColor(clean_img_HR, cv2.COLOR_RGB2BGR), idx, dataformats="HWC")
         # output_shape = np.array(output).shape
         # if(np.array(clean_img).shape[0] > output_shape[0]):
         #     clean_img = np.delete(clean_img, -1, axis = 0)
@@ -170,7 +173,7 @@ def test(args):
     avg_psnr /= (count)
     avg_ssim /= (count)
     print('AVG PSNR = %2.5f, Average SSIM = %2.5f'%(avg_psnr, avg_ssim))
-    writer.close()
+    # writer.close()
 
 
 if __name__ == '__main__':

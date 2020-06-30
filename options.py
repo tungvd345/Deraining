@@ -29,7 +29,7 @@ class TrainOptions():
 		self.parser.add_argument('--loadSizeY', type=int, default=1024, help='scale images to this size')
 		self.parser.add_argument('--fineSize', type=int, default=512, help='then crop to this size')
 		self.parser.add_argument('--need_patch', default=True, help='get the patch from image')
-		self.parser.add_argument('--patch_size', type=int, default = 256, help='patch size')
+		self.parser.add_argument('--patch_size', type=int, default = 400, help='patch size')
 
 		self.parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
 		self.parser.add_argument('--batch_size', type=int, default=4, help='input batch size for training')

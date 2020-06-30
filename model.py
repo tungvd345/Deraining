@@ -17,6 +17,7 @@ class Deraining(nn.Module):
         # self.upsample1 = nn.Upsample((self.args.patch_size // 2, self.args.patch_size // 4 * 3), mode = 'bilinear', align_corners=True) # input LR
         self.upx2 = nn.Upsample(scale_factor=2, mode = 'bilinear', align_corners=True)
         # self.extractor = feature_extractor()
+
         self.up_feature = up_feature(in_channels=128*3)
         # self.conv1 = nn.Conv2d(in_channels=128*3, out_channels=128, kernel_size=1)
         # self.afim = AFIM(in_channels=128, out_channels=128)
@@ -42,7 +43,10 @@ class Deraining(nn.Module):
         # features_mul = self.afim(features)
 
         # features_add = self.afim(kpts)
-        features_add = self.up_feature(kpts)
+        up_feat_func = up_feature(in_channels=128*3, up_size=(height, width))
+        up_feat_func.cuda()
+        features_add = up_feat_func(kpts)
+        # features_add = self.up_feature(kpts)
 
         # atm, trans, streak = self.ats_model(features_clean)
         atm, trans, streak = self.ats_model(x)
@@ -135,7 +139,8 @@ class predict_S(nn.Module):
         sequence = [nn.Conv2d(64, 64 // 2, kernel_size=1),
                       nn.ReLU(True),
                       nn.Conv2d(64 // 2, out_channel, kernel_size=1),
-                      nn.Dropout2d()]
+                      nn.Dropout2d()
+                    ]
         self.down_conv = nn.Sequential(*sequence)
         self.reset_params()
 
@@ -269,7 +274,8 @@ class dense_block(nn.Module):
         sequence_2 = [nn.Conv2d(in_chan, in_chan//2, kernel_size=1),
                     nn.ReLU(True),
                     nn.Conv2d(in_chan//2, in_channel, kernel_size = 1),
-                    nn.Dropout2d()]
+                    nn.Dropout2d()
+                    ]
         self.down_conv = nn.Sequential(*sequence_2)
 
     def forward(self, x):
@@ -308,12 +314,12 @@ class TransUNet(nn.Module):
         )
         self.image_size = 240
         self.down1 = down(64, 128)
-        self.down2 = down(128, 128)
-        # self.down3 = down(256, 256)
+        self.down2 = down(128, 256)
+        self.down3 = down(256, 256)
         # self.down4 = down(512, 512)
 
         # self.up1 = up(1024, 256)
-        # self.up2 = up(512, 128)
+        self.up2 = up(512, 128)
         self.up3 = up(256, 64)
         self.up4 = up(128, 32)
         self.outconv = nn.Conv2d(32, n_classes, kernel_size=1)
@@ -325,15 +331,15 @@ class TransUNet(nn.Module):
         x1 = self.inconv(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
-        # x4 = self.down3(x3)
+        x4 = self.down3(x3)
         # x5 = self.down4(x4)
         # decoder
         # x = self.up1(x5, x4)
         # x = self.up2(x, x3)
         # x = self.up3(x, x2)
         # x = self.up4(x, x1)
-        # x = self.up2(x4, x3)
-        x = self.up3(x3, x2)
+        x = self.up2(x4, x3)
+        x = self.up3(x, x2)
         x = self.up4(x, x1)
         x = self.tanh(self.outconv(x))
         return x
@@ -405,121 +411,6 @@ class up(nn.Module):
 #     def forward(self, x):
 #         x = self.conv(x)
 #         return x
-##################################################################################
-
-##################################################################################
-# Defines the Unet generator.
-# |num_downs|: number of downsamplings in UNet. For example,
-# if |num_downs| == 7, image of size 128x128 will become of size 1x1
-# at the bottleneck
-##################################################################################
-class UnetGenerator(nn.Module):
-    def __init__(
-            self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
-        super(UnetGenerator, self).__init__()
-        # currently support only input_nc == output_nc
-        assert (input_nc == output_nc)
-
-        # construct unet structure
-        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, norm_layer=norm_layer, innermost=True)
-        for i in range(num_downs - 5):
-            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, unet_block, norm_layer=norm_layer,
-                                                 use_dropout=use_dropout)
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(output_nc, ngf, unet_block, outermost=True, norm_layer=norm_layer)
-
-        self.model = unet_block
-
-    def forward(self, input):
-        # if self.learn_residual:
-        #     output = input + output
-        #     output = torch.clamp(output, min=-1, max=1)
-        # else:
-        #     output = self.model(input)
-        output = self.model(input)
-        return output
-
-# Defines the submodule with skip connection.
-# X -------------------identity---------------------- X
-#   |-- downsampling -- |submodule| -- upsampling --|
-class UnetSkipConnectionBlock(nn.Module):
-    def __init__(
-            self, outer_nc, inner_nc, submodule=None,
-            outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False):
-        super(UnetSkipConnectionBlock, self).__init__()
-        self.outermost = outermost
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-
-        self.dConv = nn.Conv2d(outer_nc, inner_nc, kernel_size=4, stride=2, padding=1, bias=use_bias)
-        self.dRelu = nn.LeakyReLU(0.2, True)
-        self.dNorm = norm_layer(inner_nc)
-        self.uRelu = nn.ReLU(True)
-        self.uNorm = norm_layer(outer_nc)
-
-        if outermost:
-            self.uConv = nn.ConvTranspose2d(inner_nc * 2, outer_nc, kernel_size=4, stride=2, padding=1)
-            self.dModel = [self.dConv]
-            self.uModel = [self.uRelu, self.uConv, nn.Tanh()]
-            '''
-            model = [
-                dModel,
-                submodule,
-                uModel
-            ]
-            '''
-            model = [
-                    self.dConv,
-                    self.uRelu,
-                    self.uConv,
-                    nn.Tanh()
-            ]
-
-        elif innermost:
-            self.uConv = nn.ConvTranspose2d(inner_nc, outer_nc, kernel_size=4, stride=2, padding=1, bias=use_bias)
-            self.dModel = [self.dRelu, self.dConv]
-            self.uModel = [self.uRelu, self.uConv, self.uNorm]
-            '''
-            model = [
-                self.dModel,
-                self.uModel
-            ]
-            '''
-            model = [
-                self.dRelu,
-                self.dConv,
-                self.uRelu,
-                self.uConv,
-                self.uNorm
-            ]
-
-        else:
-            self.uConv = nn.ConvTranspose2d(inner_nc * 2, outer_nc, kernel_size=4, stride=2, padding=1, bias=use_bias)
-            self.dModel = [self.dRelu, self.dConv, self.dNorm]
-            self.uModel = [self.uRelu, self.uConv, self.uNorm]
-
-            model = [
-                self.dRelu,
-                self.dConv,
-                self.dNorm,
-                submodule,
-                self.uRelu,
-                self.uConv,
-                self.uNorm
-            ]
-            model += [nn.Dropout(0.5)] if use_dropout else []
-
-        self.model = nn.Sequential(*model)
-
-    def forward(self, x):
-        if self.outermost:
-            return self.model(x)
-        else:
-            return torch.cat([self.model(x), x], 1)
 ##################################################################################
 
 # class feature_extractor(nn.Module):
@@ -656,7 +547,7 @@ class AFIM(nn.Module):
         return x
 
 class up_feature(nn.Module):
-    def __init__(self, in_channels, out_channels=3):
+    def __init__(self, in_channels, out_channels=3, up_size = (200,300)):
         super(up_feature, self).__init__()
         sequence = [
             nn.Conv2d(in_channels=in_channels, out_channels=128, kernel_size=3, padding=1),
@@ -667,9 +558,9 @@ class up_feature(nn.Module):
             nn.LeakyReLU(0.2, True),
             nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),    # 128x192
             nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, padding=1),     # 256*384
+            nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, padding=1),     # 256x384
             nn.LeakyReLU(0.2, True),
-            nn.Upsample((240, 360), mode = 'bilinear', align_corners=True),
+            nn.Upsample(up_size, mode = 'bilinear', align_corners=True),
             nn.Conv2d(8, out_channels, kernel_size=1),
             nn.Dropout2d(0.5)
         ]

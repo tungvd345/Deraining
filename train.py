@@ -58,6 +58,7 @@ def count_parameters(model):
 # writer = SummaryWriter()
 def test(opt, model, dataloader):
     # print('test-------------')
+    opt.phase = 'test'
     avg_psnr = 0
     mse = mse1 = psnr = psnr1 = np.zeros(opt.val_batch_size)
     avg_psnr1 = 0
@@ -137,6 +138,7 @@ def test(opt, model, dataloader):
     return avg_psnr, avg_psnr1, total_loss_val
 
 def train(opt, train_dataloader, test_dataloader, model):
+    opt.phase = 'train'
     model = nn.DataParallel(model)
     model.apply(weights_init)
     model.cuda()
@@ -165,8 +167,8 @@ def train(opt, train_dataloader, test_dataloader, model):
     writer = SummaryWriter()
     dataiter_tr = iter(train_dataloader) # train dataset
     rain_img_tr_tb, keypoints_tr_tb, clean_img_LR_tr_tb, clean_img_tr_tb = dataiter_tr.next() #tensorboard
-    dataiter_val = iter(test_dataloader) # val dataset
-    rain_img_val_tb, keypoints_val_tb, clean_img_LR_val_tb, clean_img_val_tb = dataiter_val.next() #tensorboard
+    # dataiter_val = iter(test_dataloader) # val dataset
+    # rain_img_val_tb, keypoints_val_tb, clean_img_LR_val_tb, clean_img_val_tb = dataiter_val.next() #tensorboard
 
     # transform_list = [transforms.Normalize((-0.485/0.229, -0.456/0.224, -0.406/0.225), (1/0.229, 1/0.224, 1/0.225))]
     #                    # transforms.Normalize((0, 0, 0), (1/255, 1/255, 1/255))]
@@ -186,45 +188,58 @@ def train(opt, train_dataloader, test_dataloader, model):
 
         for idx, (rain_img, keypoints_in, clean_image_LR, clean_image_HR) in enumerate(train_dataloader):
             # print('*'*10)
+            start_iter = time.time()
             rain_img = Variable(rain_img.cuda())
             keypoints_in = Variable(keypoints_in.cuda())
             clean_image_LR = Variable(clean_image_LR.cuda())
             clean_image_HR = Variable(clean_image_HR.cuda())
-
+            t1 = time.time() - start_iter
             model.zero_grad()
+            t2 = time.time() - t1 - start_iter
             output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img, keypoints_in)
+            t3 = time.time() - t2 - t1 - start_iter
 
             loss = loss_function(output, clean_image_HR)
+            t4 = time.time() - t3 - t2 - t1 - start_iter
             loss_stage1 = loss_function(out_combine, clean_image_LR)
+            t5 = time.time() - t4- t3 - t2 - t1 - start_iter
+            # loss_ssim = 1 - ssim((output+1)/2, (clean_image_HR+1)/2, data_range=1, size_average=True)
+            t6 = time.time() -t5- t4- t3 - t2 - t1 - start_iter
             feature_output = vgg(output)
+            t7 = time.time() - t6-t5- t4- t3 - t2 - t1 - start_iter
             feature_GT_HR = vgg(clean_image_HR)
+            t8 = time.time() - t7- t6-t5- t4- t3 - t2 - t1 - start_iter
             loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
+            t9 = time.time() - t8- t7- t6-t5- t4- t3 - t2 - t1 - start_iter
             # loss_clean = loss_function(clean_layer, clean_image)
             # loss_add = loss_function(add_layer, clean_image)
             # loss_mul = loss_function(mul_layer, clean_image)
             # print('out img', output)
             # print(clean_image)
             # total_loss = loss + loss_clean + loss_add + loss_mul
-            total_loss = loss + loss_stage1 + loss_vgg
+            total_loss = loss + loss_stage1 + loss_vgg #+ loss_ssim
             total_loss.backward()
             optimizer.step()
 
             # loss_ += loss.data.cpu().numpy()
             total_loss_ += total_loss.data.cpu().numpy()
+            end_iter = time.time()
+            iter_time = end_iter - start_iter
+        save.save_model(model, epoch)
 
         with torch.no_grad():
             # loss_ = loss_ / (idx * opt.batch_size)
             total_loss_ = total_loss_ / ((idx + 1) * opt.batch_size)
-            writer.add_scalar('Loss', total_loss_, epoch + 1)
+            writer.add_scalar('Loss', total_loss_, epoch)
 
             #############################################
-            rain_img_val_tb = rain_img_val_tb.cuda()
+            rain_img_tr_tb = rain_img_tr_tb.cuda()
             # clean_img_val_tb = clean_img_val_tb.cuda()
-            keypoints_val_tb = keypoints_val_tb.cuda()
-            output_val_tb, _, _, _, _ = model(rain_img_val_tb, keypoints_val_tb)
+            keypoints_tr_tb = keypoints_tr_tb.cuda()
+            output_tr_tb, _, _, _, _ = model(rain_img_tr_tb, keypoints_tr_tb)
 
-            clean_tmp = clean_img_val_tb
-            output_tmp = output_val_tb
+            clean_tmp = clean_img_tr_tb
+            output_tmp = output_tr_tb
             mean = [0.5, 0.5, 0.5]
             std = [0.5, 0.5, 0.5]
             tmp = clean_tmp.size(0)
@@ -234,8 +249,9 @@ def train(opt, train_dataloader, test_dataloader, model):
                     t2.mul_(s).add_(m)
 
             permute = [2, 1, 0] # permute RGB --> BGR
-            writer.add_images('rain image', output_tmp[:, permute, :, :], epoch+1)
-            writer.add_images('clean image', clean_tmp[:, permute, :, :], epoch+1)
+            writer.add_images('rain image', output_tmp[:, permute, :, :], epoch)
+            # cv2.imwrite('results/rain_img_%04d.png' % (epoch), np.uint8(output_tmp[0, permute, :, :] * 255.0))
+            writer.add_images('clean image', clean_tmp[:, permute, :, :], epoch)
 
             ############################################
             end = time.time()
@@ -245,13 +261,13 @@ def train(opt, train_dataloader, test_dataloader, model):
             if(epoch + 1) % opt.period == 0:
                 model.eval()
                 avg_psnr, avg_psnr1, loss_val = test(opt, model, test_dataloader)
-                writer.add_scalar('Loss_Val', loss_val, epoch + 1)
-                writer.add_scalar('PSNR', avg_psnr, epoch+1)
-                writer.add_scalar('PSNR1', avg_psnr1, epoch+1)
+                writer.add_scalar('Loss_Val', loss_val, epoch)
+                writer.add_scalar('PSNR', avg_psnr, epoch)
+                writer.add_scalar('PSNR1', avg_psnr1, epoch)
 
                 model.train()
                 log = "[{} / {}] \tLearning_rate: {:.8f}\t Train total_loss: {:.4f}\t Val Loss: {:.4f} \t Val PSNR: {:.4f} \t Val PSNR1: {:.4f} Time: {:.4f}".format(
-                    epoch + 1, opt.epochs, learning_rate, total_loss_, loss_val, avg_psnr, avg_psnr1, total_time)
+                    epoch, opt.epochs, learning_rate, total_loss_, loss_val, avg_psnr, avg_psnr1, total_time)
                 print(log)
                 save.save_log(log)
                 save.save_model(model, epoch)
@@ -272,6 +288,7 @@ if __name__ == '__main__':
     from math import log10
     import time
     import cv2
+    from pytorch_msssim import ssim, ms_ssim
 
     from helper import *
     from model import Deraining
