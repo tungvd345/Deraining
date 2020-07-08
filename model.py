@@ -25,66 +25,60 @@ class Deraining(nn.Module):
         self.operation_layer = operation_layer(in_channels=3)
 
         self.relu = nn.LeakyReLU(0.2, True)
-        # self.last_layer = nn.Sequential(
-        #     nn.ConvTranspose2d(15, 3, kernel_size=1),
-        #     nn.Tanh(),
-        # )
+
         # self.channel_att = channel_attention(in_channels=128, out_channels=15)
-        self.channel_att = channel_attention(in_channels=9)
+        self.channel_att = channel_attention(in_channels=3)
         self.rcan = RCAN(args)
 
     def forward(self, x, kpts):
         b, c, height, width = x.size()
-        # x = self.upsample1(x)
-
-        # features = self.extractor(x)
-        # features_clean = self.afim(features)
-        # features_add = self.afim(features)
-        # features_mul = self.afim(features)
-
-        # features_add = self.afim(kpts)
-        up_feat_func = up_feature(in_channels=128*3, up_size=(height, width))
-        up_feat_func.cuda()
-        features_add = up_feat_func(kpts)
-        # features_add = self.up_feature(kpts)
-
-        # atm, trans, streak = self.ats_model(features_clean)
+        # # x = self.upsample1(x)
+        #
+        # # features = self.extractor(x)
+        # # features_clean = self.afim(features)
+        # # features_add = self.afim(features)
+        # # features_mul = self.afim(features)
+        #
+        # # features_add = self.afim(kpts)
+        # up_feat_func = up_feature(in_channels=128*3, up_size=(height, width))
+        # up_feat_func.cuda()
+        # features_add = up_feat_func(kpts)
+        # # features_add = self.up_feature(kpts)
+        #
+        # # atm, trans, streak = self.ats_model(features_clean)
         atm, trans, streak = self.ats_model(x)
         clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
 
-        add_layer = self.operation_layer(features_add)
-        add_layer = x + add_layer
+        # add_layer = self.operation_layer(features_add)
+        # add_layer = x + add_layer
+        #
+        # mul_layer = self.operation_layer(features_add)
+        # mul_layer = x * mul_layer
 
-        mul_layer = self.operation_layer(features_add)
-        mul_layer = x * mul_layer
-
-        # mul_layerx3 = torch.cat((mul_layer, mul_layer, mul_layer), dim=1)
-        # mul_layerx3, _ = self.sa(mul_layerx3)
-        # mul_layer = self.conv_oper(mul_layerx3)
-
-        # concatenates = torch.cat((clean, add_layer, mul_layer, exp_layer,log_layer), dim=1)
-        # concatenates = torch.cat((clean, add_layer, mul_layer, add_layer, mul_layer), dim=1)
-        concatenates = torch.cat((clean, add_layer, mul_layer), dim=1)
-        # concatenates = self.relu(concatenates)
-
-        # out_comb, att = self.sa(concatenates)
-
-        # w0, w1, w2, w3, w4 = self.channel_att(concatenates)
-        # out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer + w3 * add_layer + w4 * mul_layer
-        w0, w1, w2 = self.channel_att(concatenates)
-        out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer
-
-        # upsample2 = nn.Upsample((height // 2, width // 2), mode = 'bilinear', align_corners=True)
-        # out_comb = upsample2(out_comb)
-        # clean = upsample2(clean)
-        # add_layer = upsample2(add_layer)
-        # mul_layer = upsample2(mul_layer)
+        # # mul_layerx3 = torch.cat((mul_layer, mul_layer, mul_layer), dim=1)
+        # # mul_layerx3, _ = self.sa(mul_layerx3)
+        # # mul_layer = self.conv_oper(mul_layerx3)
+        #
+        # # concatenates = torch.cat((clean, add_layer, mul_layer, exp_layer,log_layer), dim=1)
+        # # concatenates = torch.cat((clean, add_layer, mul_layer, add_layer, mul_layer), dim=1)
+        # concatenates = torch.cat((clean, add_layer, mul_layer), dim=1)
+        # # concatenates = self.relu(concatenates)
+        #
+        # # out_comb, att = self.sa(concatenates)
+        #
+        # # w0, w1, w2, w3, w4 = self.channel_att(concatenates)
+        # # out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer + w3 * add_layer + w4 * mul_layer
+        # w0, w1, w2 = self.channel_att(concatenates)
+        # out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer
+        w = self.channel_att(clean)
+        out_comb = w * clean
 
         out_SR = self.rcan(out_comb)
         # out_combine = self.upx2(out_comb)
         out_combine = out_comb
-        return out_SR, out_combine, clean, add_layer, mul_layer
-        # return out_SR, out_combine, add_layer, add_layer, add_layer
+
+        # return out_SR, out_combine, clean, add_layer, mul_layer
+        return out_SR, out_combine, clean, clean, clean
 
 class ATS_model(nn.Module):
     def __init__(self, args, in_channels):
@@ -315,10 +309,10 @@ class TransUNet(nn.Module):
         self.image_size = 240
         self.down1 = down(64, 128)
         self.down2 = down(128, 256)
-        self.down3 = down(256, 256)
-        # self.down4 = down(512, 512)
+        self.down3 = down(256, 512)
+        self.down4 = down(512, 512)
 
-        # self.up1 = up(1024, 256)
+        self.up1 = up(1024, 256)
         self.up2 = up(512, 128)
         self.up3 = up(256, 64)
         self.up4 = up(128, 32)
@@ -332,13 +326,14 @@ class TransUNet(nn.Module):
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x4 = self.down3(x3)
-        # x5 = self.down4(x4)
+        x5 = self.down4(x4)
         # decoder
         # x = self.up1(x5, x4)
         # x = self.up2(x, x3)
         # x = self.up3(x, x2)
         # x = self.up4(x, x1)
-        x = self.up2(x4, x3)
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         x = self.tanh(self.outconv(x))
@@ -585,10 +580,10 @@ class channel_attention(nn.Module):
         ]
         self.model1 = nn.Sequential(*sequence1)
         sequence2 = [
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(in_channels=in_channels, out_channels=in_channels//4, kernel_size=1),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv2d(in_channels=in_channels//4, out_channels=in_channels, kernel_size=1),  # padding = 1),
+            # nn.AdaptiveAvgPool2d(1),
+            # nn.Conv2d(in_channels=in_channels, out_channels=in_channels//4, kernel_size=1),
+            # nn.LeakyReLU(0.2, True),
+            # nn.Conv2d(in_channels=in_channels//4, out_channels=in_channels, kernel_size=1),  # padding = 1),
             nn.Sigmoid()
         ]
         self.model2 = nn.Sequential(*sequence2)
@@ -596,12 +591,11 @@ class channel_attention(nn.Module):
         x  = self.model1(x)
         y = self.model2(x)
         out = x * y
-        out0 = out[:,0:3,:,:]
-        out1 = out[:,3:6,:,:]
-        out2 = out[:,6:9,:,:]
-        # out3 = out[:,9:12,:,:]
-        # out4 = out[:,12:15,:,:]
-        return out0, out1, out2#, out3, out4
+        # out0 = out[:,0:3,:,:]
+        # out1 = out[:,3:6,:,:]
+        # out2 = out[:,6:9,:,:]
+
+        return out #out0, out1, out2
 
 
 class RCAN(nn.Module):

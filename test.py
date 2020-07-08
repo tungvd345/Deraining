@@ -11,7 +11,7 @@ import torch.optim as optim
 import math
 from math import log10
 
-from model_tmp import Deraining
+from model import Deraining
 from data import outdoor_rain_test, outdoor_rain_train
 from helper import *
 import time
@@ -19,7 +19,7 @@ from scipy import io
 from PIL import Image
 import cv2
 from skimage.measure import compare_ssim as ssim
-
+from skimage.measure import compare_psnr as psnr
 
 parser = argparse.ArgumentParser(description='Deraining')
 
@@ -28,7 +28,7 @@ parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy
 # parser.add_argument('--rain_valDataroot', required=False, default='G:/DATASET/JORDER_DATASET/test/rain_data_test_Light') # modifying to your SR_data folder path
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_36.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_lastest.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')
@@ -153,7 +153,7 @@ def test(args):
 
         # clean_img_pil = Image.fromarray(clean_img, mode='RGB')
         # clean_img_pil.save('results/GT/GT_%03d.png' %(count))
-        cv2.imwrite('results/GT/GT_%03d.png' %(count), clean_img_HR)
+        cv2.imwrite('results/GT/GT_%04d.png' %(count), clean_img_HR)
         # if (idx < 10):
         #     writer.add_image('GT test image', cv2.cvtColor(clean_img_HR, cv2.COLOR_RGB2BGR), idx, dataformats="HWC")
         # output_shape = np.array(output).shape
@@ -163,12 +163,14 @@ def test(args):
         #     clean_img = np.delete(clean_img, -1, axis = 1)
 
         mse = ((out - clean_img_HR) ** 2).mean()
-        psnr_val = 10 * log10(255 * 255 / (mse + 10 ** (-10)))
+        # psnr_val = 10 * log10(255 * 255 / (mse + 10 ** (-10)))
+        # avg_psnr += psnr_val
+        psnr_val = psnr(out, clean_img_HR, data_range=255)
         avg_psnr += psnr_val
 
         ssim_val = ssim(out, clean_img_HR, data_range=255, multichannel=True, gaussian_weights=True)
         avg_ssim += ssim_val
-        print('%03d_img: PSNR = %2.5f, SSIM = %2.5f'%(count, psnr_val, ssim_val))
+        print('%04d_img: PSNR = %2.5f, SSIM = %2.5f'%(count, psnr_val, ssim_val))
 
     avg_psnr /= (count)
     avg_ssim /= (count)
