@@ -69,11 +69,11 @@ def get_keypoints(pos, imgIn, keypoint_size):
         nkeypoints = 128
         pos = np.random.randint(h, size=(128,2))
 
-    imgIn = np.pad(imgIn, ([0, keypoint_size], [0, keypoint_size//2*3], [0,0]), 'edge')
-    keypoint_size = keypoint_size
-    keypoints = np.zeros([keypoint_size, keypoint_size//2*3,3*128])
+    imgIn = np.pad(imgIn, ([0, keypoint_size[0]], [0, keypoint_size[1]], [0,0]), 'edge')
+    # keypoint_size = keypoint_size
+    keypoints = np.zeros([keypoint_size[0], keypoint_size[1],3*128])
     for i in range(min(nkeypoints, 128)):
-        keypoints[:,:,i*3:i*3+3] = imgIn[pos[i,1] : pos[i,1]+keypoint_size, pos[i,0] : pos[i,0]+keypoint_size//2*3, :]
+        keypoints[:,:,i*3:i*3+3] = imgIn[pos[i,1] : pos[i,1]+keypoint_size[0], pos[i,0] : pos[i,0]+keypoint_size[1], :]
     if (nkeypoints<128):
         # print('num_features < 128')
         for i in range(nkeypoints, 128):
@@ -82,29 +82,36 @@ def get_keypoints(pos, imgIn, keypoint_size):
     return keypoints
 
 def augment(imgIn, imgTar):
-    if random.random() < 0.3: # horizontal flip
+    if random.random() < 0.25: # horizontal flip
         imgIn = imgIn[:, ::-1, :]
         imgTar = imgTar[:, ::-1, :]
-
-    if random.random() < 0.3: # vertical flip
+    elif random.random() < 0.5: # vertical flip
         imgIn = imgIn[::-1, :, :]
         imgTar = imgTar[::-1, :, :]
+    elif random.random() < 0.75: # horizontal + vertical filp
+        imgIn = imgIn[::-1, ::-1, :]
+        imgTar = imgTar[::-1, ::-1, :]
+    else:
+        imgIn= imgIn
+        imgTar = imgTar
 
-    rot = random.randint(0, 1) # rotate 0/180 degree
-    imgIn = np.rot90(imgIn, rot*2, (0, 1))
-    imgTar = np.rot90(imgTar, rot*2, (0, 1))
+    # rot = random.randint(0, 1) # rotate 0/180 degree
+    # imgIn = np.rot90(imgIn, rot*2, (0, 1))
+    # imgTar = np.rot90(imgTar, rot*2, (0, 1))
 
     return imgIn, imgTar
 
 def make_dataset(dir):
     images = []
+    file_name = []
     assert os.path.isdir(dir), '%s is not a valid directory' % dir
 
     for root, _, fnames in sorted(os.walk(dir)):
         for fname in fnames:
             path = os.path.join(root, fname)
             images.append(path)
-    return images
+            file_name.append(fname)
+    return images, file_name
 
 class outdoor_rain_train(data.Dataset):
     def __init__(self, args):
@@ -135,8 +142,8 @@ class outdoor_rain_train(data.Dataset):
         self.dir_in = os.path.join(apath, dir_rainy)
         self.dir_tar = os.path.join(apath, dir_clear)
 
-        self.file_in_list = sorted(make_dataset(self.dir_in))
-        self.file_tar_list = sorted(make_dataset(self.dir_tar))
+        self.file_in_list, self.file_in_name = sorted(make_dataset(self.dir_in))
+        self.file_tar_list, self.file_tar_name = sorted(make_dataset(self.dir_tar))
         # self.transform = get_transform(args)
         self.len = len(self.file_in_list)
         ###############
@@ -155,9 +162,11 @@ class outdoor_rain_train(data.Dataset):
         #################################################
 
         mser = cv2.MSER_create()
+        h, w, c = img_in_LR.shape
+        keypoint_size = (h//16, w//16)
         keypoints_in_pos = mser.detect(img_in_LR)
         keypoints_in_pos = np.uint16(np.asarray([p.pt for p in keypoints_in_pos]))
-        keypoints_in = get_keypoints(keypoints_in_pos, img_in_LR, 16)
+        keypoints_in = get_keypoints(keypoints_in_pos, img_in_LR, keypoint_size)
 
         # keypoints_tar_pos = mser.detect(img_tar_LR)
         # keypoints_tar_pos = np.uint16(np.asarray([p.pt for p in keypoints_tar_pos]))
@@ -222,8 +231,8 @@ class outdoor_rain_test(data.Dataset):
         dir_clear = 'gt'
         self.dir_in = os.path.join(apath, dir_rainy)
         self.dir_tar = os.path.join(apath, dir_clear)
-        self.file_in_list = sorted(make_dataset(self.dir_in))
-        self.file_tar_list = sorted(make_dataset(self.dir_tar))
+        self.file_in_list, self.file_in_name = sorted(make_dataset(self.dir_in))
+        self.file_tar_list, self.file_tar_name = sorted(make_dataset(self.dir_tar))
 
         # self.file_list = sorted(make_dataset(apath))
         # self.transform = transforms.Compose([transforms.ToTensor(),
@@ -250,18 +259,22 @@ class outdoor_rain_test(data.Dataset):
         ##################### use cv2 image
         img_in = cv2.imread(self.file_in_list[idx])
         img_in_LR = img_in[::2, ::2, :]
+        img_in_LR_name = self.file_in_name[idx]
         img_tar = cv2.imread(self.file_tar_list[idx // 15])
         img_tar_LR = img_tar[::2, ::2, :]
+        img_tar_LR_name = self.file_tar_name[idx // 15]
 
+        h, w, c = img_in_LR.shape
+        keypoint_size = (h//16, w//16)
         mser = cv2.MSER_create()
         keypoints_in_pos = mser.detect(img_in_LR)
         keypoints_in_pos = np.uint16(np.asarray([p.pt for p in keypoints_in_pos]))
-        keypoints_in = get_keypoints(keypoints_in_pos, img_in_LR, 16)
+        keypoints_in = get_keypoints(keypoints_in_pos, img_in_LR, keypoint_size)
 
         img_tar_LR, img_tar, img_in_LR = RGB_np2tensor(img_tar_LR, img_tar, img_in_LR, args.nchannel)
         keypoints_in = RGB_np2tensor_kpt(keypoints_in, 128)
         ##################################################################
-        return img_in_LR, keypoints_in, img_tar_LR, img_tar
+        return img_in_LR, keypoints_in, img_tar_LR, img_tar, img_in_LR_name
 
     def __len__(self):
         return self.len

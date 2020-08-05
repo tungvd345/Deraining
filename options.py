@@ -33,11 +33,11 @@ class TrainOptions():
 
 		self.parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
 		self.parser.add_argument('--batch_size', type=int, default=4, help='input batch size for training')
-		self.parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
-		self.parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train')
+		self.parser.add_argument('--lr', type=float, default=5e-5, help='learning rate')
+		self.parser.add_argument('--epochs', type=int, default=500, help='number of epochs to train')
 		self.parser.add_argument('--lrDecay', type=int, default=100, help='epoch of half lr')
 		self.parser.add_argument('--decayType', default='inv', help='lr decay function')
-		self.parser.add_argument('--lossType', default='L1', help='Loss type')
+		self.parser.add_argument('--lossType', default='MSE', help='Loss type')
 
 		self.parser.add_argument('--period', type=int, default=1, help='period of evaluation')
 		self.parser.add_argument('--gpu', type=int, default=0, help='gpu index')
@@ -46,7 +46,7 @@ class TrainOptions():
 		self.parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
 		self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
 		self.parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
-
+		self.parser.add_argument('--seed', type=int, default=345, help='random seed')
 
 		self.parser.add_argument('--display_freq', type=int, default=100, help='frequency of showing training results on screen')
 		self.parser.add_argument('--print_freq', type=int, default=100, help='frequency of showing training results on console')

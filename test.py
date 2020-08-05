@@ -18,17 +18,17 @@ import time
 from scipy import io
 from PIL import Image
 import cv2
-from skimage.measure import compare_ssim as ssim
-from skimage.measure import compare_psnr as psnr
+from skimage.metrics import structural_similarity as ssim
+from skimage.metrics import peak_signal_noise_ratio as psnr
 
 parser = argparse.ArgumentParser(description='Deraining')
 
 # validation data
-parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param') # modifying to your SR_data folder path
+parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5') # modifying to your SR_data folder path
 # parser.add_argument('--rain_valDataroot', required=False, default='G:/DATASET/JORDER_DATASET/test/rain_data_test_Light') # modifying to your SR_data folder path
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_lastest.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_503.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')
@@ -97,7 +97,7 @@ def test(args):
     avg_ssim = 0
     count = 0
 
-    for idx, (rain_img, keypoints_in, clean_img_LR, clean_img_HR) in enumerate(test_dataloader):
+    for idx, (rain_img, keypoints_in, clean_img_LR, clean_img_HR, rain_img_name) in enumerate(test_dataloader):
         count = count + 1
         with torch.no_grad():
             rain_img = Variable(rain_img.cuda(), volatile=False)
@@ -132,12 +132,12 @@ def test(args):
         out = np.uint8(output)
         # out_pil = Image.fromarray(out, mode='RGB')
         # out_pil.save('results/out_img/out_img_%04d.jpg' % (count))
-        cv2.imwrite('results/out_img/out_img_%04d.png' %(count), out)#cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+        cv2.imwrite('results/out_img/out_%s' %(rain_img_name[0]), out)#cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
 
         comb = np.uint8(out_combine) # clean layer - output of network
         # clean_layer_pil = Image.fromarray(clean, mode='RGB')
         # clean_layer_pil.save('results/clean_img/clean_img_%04d.jpg' % (count))
-        cv2.imwrite('results/clean_img/clean_img_%04d.png' % (count), comb)#cv2.cvtColor(comb, cv2.COLOR_BGR2RGB))
+        cv2.imwrite('results/clean_img/clean_%s' %(rain_img_name[0]), comb)#cv2.cvtColor(comb, cv2.COLOR_BGR2RGB))
 
         # =========== Target Image ===============
         clean_img_HR = clean_img_HR.cpu()
@@ -153,7 +153,7 @@ def test(args):
 
         # clean_img_pil = Image.fromarray(clean_img, mode='RGB')
         # clean_img_pil.save('results/GT/GT_%03d.png' %(count))
-        cv2.imwrite('results/GT/GT_%04d.png' %(count), clean_img_HR)
+        cv2.imwrite('results/GT/GT_%s' %(rain_img_name[0]), clean_img_HR)
         # if (idx < 10):
         #     writer.add_image('GT test image', cv2.cvtColor(clean_img_HR, cv2.COLOR_RGB2BGR), idx, dataformats="HWC")
         # output_shape = np.array(output).shape
@@ -170,7 +170,9 @@ def test(args):
 
         ssim_val = ssim(out, clean_img_HR, data_range=255, multichannel=True, gaussian_weights=True)
         avg_ssim += ssim_val
-        print('%04d_img: PSNR = %2.5f, SSIM = %2.5f'%(count, psnr_val, ssim_val))
+        log = "{}:\t PSNR = {:.5f}, SSIM = {:.5f}".format(rain_img_name[0], psnr_val, ssim_val)
+        # print('%s: PSNR = %2.5f, SSIM = %2.5f' %(rain_img_name, psnr_val, ssim_val))
+        print(log)
 
     avg_psnr /= (count)
     avg_ssim /= (count)

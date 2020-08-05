@@ -1,20 +1,20 @@
 import os
 import argparse
+import torch
 import numpy as np
-import math
-from math import log10
-import time
+import torchvision.transforms as transforms
 import cv2
 from skimage.metrics import structural_similarity as ssim
 from skimage.metrics import peak_signal_noise_ratio as psnr
-
+from cal_ssim import SSIM
 
 parser = argparse.ArgumentParser(description='Deraining')
 
 # validation data
-# parser.add_argument('--data_dir_in', required=False, default="D:/rain_comparison/HeavyRainRemoval_CVPR2019/HeavyRainRemoval-master/out/test_601_700_with_train_param")
-parser.add_argument('--data_dir_in', required=False, default="D:/rain_comparison/RCAN/RCAN-master/RCAN_TestCode/SR/BI/RCAN/Heavy_rain_2019/x2")
-parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param/gt')
+# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/HeavyRainRemoval_CVPR2019/HeavyRainRemoval-master/out/test_with_train_param_v5_LR')
+parser.add_argument('--data_dir_in', required=False, default="D:/Deraining_TungVu/results/out_img")
+parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5/gt')
+# parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/LRBI/test_with_train_param_v5/gt')
 
 args = parser.parse_args()
 
@@ -28,6 +28,9 @@ def evaluate(args):
     # calculate PSNR, SSIM
     psnr_avg = 0
     ssim_avg = 0
+    ssim_avg_self = 0
+    # SSIM_func = SSIM().cuda()
+
     for i in range(len_list_in):
         list_in = os.path.join(path_in, file_in[i])
         list_tar = os.path.join(path_tar, file_tar[i//15])
@@ -40,13 +43,35 @@ def evaluate(args):
         psnr_tmp = psnr(img_in, img_tar, data_range=255)
         psnr_avg += psnr_tmp
 
-        ssim_tmp = ssim(img_in, img_tar, data_range=255, multichannel=True, gaussian_weights=True)
+        ssim_tmp = ssim(img_in, img_tar, data_range=255, multichannel=True)
         ssim_avg += ssim_tmp
+
+        # img_in_torch, img_tar_torch = RGB_np2tensor(img_in, img_tar)
+        # c, h, w = img_in_torch.shape
+        # img_in_torch = torch.reshape(img_in_torch, (1, c, h, w))
+        # img_tar_torch = torch.reshape(img_tar_torch, (1, c, h, w))
+        # ssim_tmp_self = SSIM_func(img_in_torch, img_tar_torch)
+        # ssim_avg_self += ssim_tmp_self
         print('%s: PSNR = %2.5f, SSIM = %2.5f' % (file_in[i], psnr_tmp, ssim_tmp))
 
     psnr_avg = psnr_avg / len_list_in
     ssim_avg = ssim_avg / len_list_in
+    # ssim_avg_self = ssim_avg_self / len_list_in
     print('avg psnr = %2.5f, avg SSIM = %1.5f' %(psnr_avg, ssim_avg))
+
+# def RGB_np2tensor(imgIn, imgTar):
+#     # to Tensor
+#     ts = (2, 0, 1)
+#     imgIn = torch.Tensor(imgIn.transpose(ts).astype(float)).mul_(1.0)
+#     imgTar = torch.Tensor(imgTar.transpose(ts).astype(float)).mul_(1.0)
+#
+#     transform_list = [transforms.Normalize((0, 0, 0), (255, 255, 255)),
+#                         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+#     normalize = transforms.Compose(transform_list)
+#     imgIn = normalize(imgIn)
+#     imgTar = normalize(imgTar)
+#
+#     return imgIn, imgTar
 
 if __name__ == '__main__':
     evaluate(args)

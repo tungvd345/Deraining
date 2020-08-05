@@ -41,7 +41,7 @@ class saveData():
     def load_model(self, model):
         model.load_state_dict(torch.load(self.save_dir_model + '/model_lastest.pt'))
         last_epoch = torch.load(self.save_dir_model + '/last_epoch.pt')
-        print("load mode_status frmo {}/model_lastest.pt, epoch: {}".format(self.save_dir_model, last_epoch))
+        print("load mode_status from {}/model_lastest.pt, epoch: {}".format(self.save_dir_model, last_epoch))
         return model, last_epoch
 
 class Vgg16(torch.nn.Module):

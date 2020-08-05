@@ -70,7 +70,7 @@ def test(opt, model, dataloader):
     # rain_img_tr_tb, keypoints_tr_tb, clean_img_LR_tr_tb, clean_img_tr_tb  = dataiter.next()
     ###############################################
 
-    for idx, (rain_img, keypoints_in, clean_img_LR, clean_img_HR) in enumerate(dataloader):
+    for idx, (rain_img, keypoints_in, clean_img_LR, clean_img_HR, rain_img_name) in enumerate(dataloader):
         # print('inx:', batch)
         with torch.no_grad():
             rain_img = Variable(rain_img.cuda(), volatile=False)
@@ -82,8 +82,9 @@ def test(opt, model, dataloader):
         loss_function = set_loss(opt)
         loss_function.cuda()
         loss = loss_function(output, clean_img_HR)
-        loss_stage1 = loss_function(out_combine, clean_img_LR)
-        loss_val += (loss_stage1 + loss).cpu().numpy()
+        # loss_stage1 = loss_function(out_combine, clean_img_LR)
+        loss_ssim = 1 - ssim((output + 1) / 2, (clean_img_HR + 1) / 2, data_range=1, size_average=True)
+        loss_val += (loss_ssim + loss).cpu().numpy()
 
         output = output.cpu()
         output = output.data.squeeze(0)
@@ -147,16 +148,17 @@ def train(opt, train_dataloader, test_dataloader, model):
     Numparams = count_parameters(model)
     print('Number of param = ', Numparams)
 
-    vgg = Vgg16()
-    vgg.cuda()
-    mse_loss = nn.MSELoss()
-    mse_loss.cuda()
-
     last_epoch = 0
     # if opt.finetuning:
     #     model.load_state_dict(torch.load(opt.pretrained_model))
     start_epoch = last_epoch
 
+    vgg = Vgg16()
+    vgg.cuda()
+    mse_loss = nn.MSELoss()
+    mse_loss.cuda()
+    l1_loss = nn.L1Loss()
+    l1_loss.cuda()
     loss_function = set_loss(opt)
     loss_function.cuda()
     total_loss = 0
@@ -165,8 +167,8 @@ def train(opt, train_dataloader, test_dataloader, model):
 
     #########################
     writer = SummaryWriter()
-    dataiter_tr = iter(train_dataloader) # train dataset
-    rain_img_tr_tb, keypoints_tr_tb, clean_img_LR_tr_tb, clean_img_tr_tb = dataiter_tr.next() #tensorboard
+    dataiter_tr = iter(test_dataloader) #  dataset
+    rain_img_tr_tb, keypoints_tr_tb, clean_img_LR_tr_tb, clean_img_tr_tb, _ = dataiter_tr.next() #tensorboard
     # dataiter_val = iter(test_dataloader) # val dataset
     # rain_img_val_tb, keypoints_val_tb, clean_img_LR_val_tb, clean_img_val_tb = dataiter_val.next() #tensorboard
 
@@ -193,31 +195,27 @@ def train(opt, train_dataloader, test_dataloader, model):
             keypoints_in = Variable(keypoints_in.cuda())
             clean_image_LR = Variable(clean_image_LR.cuda())
             clean_image_HR = Variable(clean_image_HR.cuda())
-            t1 = time.time() - start_iter
+            # t1 = time.time() - start_iter
             model.zero_grad()
-            t2 = time.time() - t1 - start_iter
+            # t2 = time.time() - t1 - start_iter
             output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img, keypoints_in)
-            t3 = time.time() - t2 - t1 - start_iter
+            # t3 = time.time() - t2 - t1 - start_iter
 
             loss = loss_function(output, clean_image_HR)
-            t4 = time.time() - t3 - t2 - t1 - start_iter
-            loss_stage1 = loss_function(out_combine, clean_image_LR)
-            t5 = time.time() - t4- t3 - t2 - t1 - start_iter
-            # loss_ssim = 1 - ssim((output+1)/2, (clean_image_HR+1)/2, data_range=1, size_average=True)
-            t6 = time.time() -t5- t4- t3 - t2 - t1 - start_iter
+            grad_h_est, grad_v_est = gradient(output)
+            grad_h_gt, grad_v_gt = gradient(clean_image_HR)
+            loss_edge = l1_loss(grad_h_est, grad_h_gt) + l1_loss(grad_v_est, grad_v_gt)
+            # t4 = time.time() - t3 - t2 - t1 - start_iter
+            # loss_stage1 = loss_function(out_combine, clean_image_LR)
+            loss_ssim = 1 - ssim((output+1)/2, (clean_image_HR+1)/2, data_range=1, size_average=True)
             feature_output = vgg(output)
-            t7 = time.time() - t6-t5- t4- t3 - t2 - t1 - start_iter
             feature_GT_HR = vgg(clean_image_HR)
-            t8 = time.time() - t7- t6-t5- t4- t3 - t2 - t1 - start_iter
             loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
-            t9 = time.time() - t8- t7- t6-t5- t4- t3 - t2 - t1 - start_iter
-            # loss_clean = loss_function(clean_layer, clean_image)
-            # loss_add = loss_function(add_layer, clean_image)
-            # loss_mul = loss_function(mul_layer, clean_image)
-            # print('out img', output)
-            # print(clean_image)
+            loss_clean = loss_function(clean_layer, clean_image_LR)
+            loss_add = loss_function(add_layer, clean_image_LR)
+            loss_mul = loss_function(mul_layer, clean_image_LR)
             # total_loss = loss + loss_clean + loss_add + loss_mul
-            total_loss = loss + loss_stage1 + loss_vgg #+ loss_ssim
+            total_loss = loss + loss_ssim + loss_edge + (loss_clean+loss_add+loss_mul)#+ loss_stage1 + loss_vgg
             total_loss.backward()
             optimizer.step()
 
@@ -296,6 +294,8 @@ if __name__ == '__main__':
     from options import TrainOptions
 
     opt = TrainOptions().parse()
+    torch.manual_seed(opt.seed)
+
     model = Deraining(opt)
     train_data = get_dataset(opt)
     test_data = get_testdataset(opt)
