@@ -211,11 +211,11 @@ def train(opt, train_dataloader, test_dataloader, model):
             feature_output = vgg(output)
             feature_GT_HR = vgg(clean_image_HR)
             loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
-            loss_clean = loss_function(clean_layer, clean_image_LR)
+            # loss_clean = loss_function(clean_layer, clean_image_LR)
             loss_add = loss_function(add_layer, clean_image_LR)
             loss_mul = loss_function(mul_layer, clean_image_LR)
             # total_loss = loss + loss_clean + loss_add + loss_mul
-            total_loss = loss + loss_ssim + loss_edge + (loss_clean+loss_add+loss_mul)#+ loss_stage1 + loss_vgg
+            total_loss = loss + loss_ssim + loss_edge + (loss_add+loss_mul)# + loss_stage1 + loss_vgg
             total_loss.backward()
             optimizer.step()
 

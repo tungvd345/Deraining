@@ -27,7 +27,7 @@ class Deraining(nn.Module):
         self.relu = nn.LeakyReLU(0.2, True)
 
         # self.channel_att = channel_attention(in_channels=128, out_channels=15)
-        self.channel_att = channel_attention(in_channels=9)
+        self.channel_att = channel_attention(in_channels=6)
         self.rcan = RCAN(args)
 
     def forward(self, x, kpts):
@@ -49,9 +49,8 @@ class Deraining(nn.Module):
         features_mul = self.up_feature(kpts)
         features_mul = upsample1(features_mul)
 
-        # atm, trans, streak = self.ats_model(features_clean)
-        atm, trans, streak = self.ats_model(x)
-        clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
+        # atm, trans, streak = self.ats_model(x)
+        # clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
 
         add_layer = self.operation_layer(features_add)
         add_layer = x + add_layer
@@ -59,27 +58,21 @@ class Deraining(nn.Module):
         mul_layer = self.operation_layer(features_mul)
         mul_layer = x * mul_layer
 
-        # mul_layerx3 = torch.cat((mul_layer, mul_layer, mul_layer), dim=1)
-        # mul_layerx3, _ = self.sa(mul_layerx3)
-        # mul_layer = self.conv_oper(mul_layerx3)
-
-        # concatenates = torch.cat((clean, add_layer, mul_layer, exp_layer,log_layer), dim=1)
-        # concatenates = torch.cat((clean, add_layer, mul_layer, add_layer, mul_layer), dim=1)
-        concatenates = torch.cat((clean, add_layer, mul_layer), dim=1)
-        # concatenates = self.relu(concatenates)
-
-        # out_comb, att = self.sa(concatenates)
+        # concatenates = torch.cat((clean, add_layer, mul_layer), dim=1)
+        concatenates = torch.cat((add_layer, mul_layer), dim=1)
 
         # w0, w1, w2, w3, w4 = self.channel_att(concatenates)
         # out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer + w3 * add_layer + w4 * mul_layer
-        w0, w1, w2 = self.channel_att(concatenates)
-        out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer
+        # w0, w1, w2 = self.channel_att(concatenates)
+        # out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer
+        w1, w2 = self.channel_att(concatenates)
+        out_comb = w1 * add_layer + w2 * mul_layer
 
         out_SR = self.rcan(out_comb)
         # out_combine = self.upx2(out_comb)
         out_combine = out_comb
 
-        return out_SR, out_combine, clean, add_layer, mul_layer
+        return out_SR, out_combine, out_combine, add_layer, mul_layer
         # return out_SR, out_combine, clean, clean, clean
 
 class ATS_model(nn.Module):
@@ -330,10 +323,6 @@ class TransUNet(nn.Module):
         x4 = self.down3(x3)
         x5 = self.down4(x4)
         # decoder
-        # x = self.up1(x5, x4)
-        # x = self.up2(x, x3)
-        # x = self.up3(x, x2)
-        # x = self.up4(x, x1)
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
@@ -595,9 +584,9 @@ class channel_attention(nn.Module):
         out = x * y
         out0 = out[:,0:3,:,:]
         out1 = out[:,3:6,:,:]
-        out2 = out[:,6:9,:,:]
+        # out2 = out[:,6:9,:,:]
 
-        return out0, out1, out2
+        return out0, out1#, out2
 
 
 class RCAN(nn.Module):

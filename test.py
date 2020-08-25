@@ -28,7 +28,7 @@ parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy
 # parser.add_argument('--rain_valDataroot', required=False, default='G:/DATASET/JORDER_DATASET/test/rain_data_test_Light') # modifying to your SR_data folder path
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_503.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_339.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')

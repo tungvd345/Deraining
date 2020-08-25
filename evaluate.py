@@ -10,13 +10,15 @@ from cal_ssim import SSIM
 
 parser = argparse.ArgumentParser(description='Deraining')
 
-# validation data
-# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/HeavyRainRemoval_CVPR2019/HeavyRainRemoval-master/out/test_with_train_param_v5_LR')
-parser.add_argument('--data_dir_in', required=False, default="D:/Deraining_TungVu/results/out_img")
+parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/RCAN/RCAN-master/RCAN_TestCode/SR/BI/RCAN/DID-MDN_train_heavydata_epoch49/x2')
+# parser.add_argument('--data_dir_in', required=False, default="D:/Deraining_TungVu/results/out_img")
 parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5/gt')
 # parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/LRBI/test_with_train_param_v5/gt')
 
 args = parser.parse_args()
+for arg in vars(args):
+    print (arg, getattr(args, arg))
+# print(args)
 
 def evaluate(args):
     path_in = args.data_dir_in
@@ -58,20 +60,6 @@ def evaluate(args):
     ssim_avg = ssim_avg / len_list_in
     # ssim_avg_self = ssim_avg_self / len_list_in
     print('avg psnr = %2.5f, avg SSIM = %1.5f' %(psnr_avg, ssim_avg))
-
-# def RGB_np2tensor(imgIn, imgTar):
-#     # to Tensor
-#     ts = (2, 0, 1)
-#     imgIn = torch.Tensor(imgIn.transpose(ts).astype(float)).mul_(1.0)
-#     imgTar = torch.Tensor(imgTar.transpose(ts).astype(float)).mul_(1.0)
-#
-#     transform_list = [transforms.Normalize((0, 0, 0), (255, 255, 255)),
-#                         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-#     normalize = transforms.Compose(transform_list)
-#     imgIn = normalize(imgIn)
-#     imgTar = normalize(imgTar)
-#
-#     return imgIn, imgTar
 
 if __name__ == '__main__':
     evaluate(args)
