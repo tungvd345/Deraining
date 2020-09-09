@@ -12,7 +12,7 @@ import math
 from math import log10
 
 from model import Deraining
-from data import outdoor_rain_test, outdoor_rain_train
+from data import outdoor_rain_test, real_rain_test
 from helper import *
 import time
 from scipy import io
@@ -24,11 +24,12 @@ from skimage.metrics import peak_signal_noise_ratio as psnr
 parser = argparse.ArgumentParser(description='Deraining')
 
 # validation data
-parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5') # modifying to your SR_data folder path
-# parser.add_argument('--rain_valDataroot', required=False, default='G:/DATASET/JORDER_DATASET/test/rain_data_test_Light') # modifying to your SR_data folder path
+parser.add_argument('--data_type', type=str, default='real', help='testdata type [real|synthetic]')
+parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5')
+parser.add_argument('--real_rain_data_dir', required=False, default='D:/DATASETS/real_rain')
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_339.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_478.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')
@@ -57,12 +58,20 @@ def weights_init(m):
 
 
 def get_testdataset(args):
-    data_test = outdoor_rain_test(args)
+    if args.data_type == 'synthetic':
+        data_test = outdoor_rain_test(args)
+    elif args.data_type == 'real':
+        data_test = real_rain_test(args)
+
     dataloader = torch.utils.data.DataLoader(data_test, batch_size=1,
                                              drop_last=True, shuffle=False, num_workers=int(args.nThreads), pin_memory=False)
     return dataloader
 
-def test(args):
+def ensure_dir(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+def test_synthetic(args):
 
     # SR network
     my_model = Deraining(args)
@@ -179,6 +188,79 @@ def test(args):
     print('AVG PSNR = %2.5f, Average SSIM = %2.5f'%(avg_psnr, avg_ssim))
     # writer.close()
 
+def test_real(args):
+
+    # network
+    my_model = Deraining(args)
+    my_model = nn.DataParallel(my_model)
+    my_model.apply(weights_init)
+    my_model.cuda()
+    my_model.load_state_dict(torch.load(args.pretrained_model))
+
+    test_dataloader = get_testdataset(args)
+    my_model.eval()
+
+    avg_psnr = 0
+    avg_ssim = 0
+    count = 0
+
+    for idx, (rain_img, keypoints_in, rain_img_name) in enumerate(test_dataloader):
+        count = count + 1
+        with torch.no_grad():
+            rain_img = Variable(rain_img.cuda(), volatile=False)
+            keypoints_in = Variable(keypoints_in.cuda())
+
+            output, out_combine, clean_layer, add_layer, mul_layer = my_model(rain_img, keypoints_in)
+            #print(output.shape)
+
+        output = output.cpu()
+        output = output.data.squeeze(0)
+        out_combine = out_combine.cpu()
+        out_combine = out_combine.data.squeeze(0)
+
+        mean = [0.5, 0.5, 0.5]
+        std = [0.5, 0.5, 0.5]
+        for t, t1, m, s in zip(output, out_combine, mean, std):
+            t.mul_(s).add_(m)
+            t1.mul_(s).add_(m)
+
+        output = output.numpy()
+        output *= 255.0
+        output = output.clip(0, 255)
+        output = output.transpose(1, 2, 0)
+        out_combine = out_combine.numpy()
+        out_combine *= 255.0
+        out_combine = out_combine.clip(0, 255)
+        out_combine = out_combine.transpose(1, 2, 0)
+
+        out = np.uint8(output) # output of network
+        ensure_dir('results_real/out_img')
+        cv2.imwrite('results_real/out_img/out_%s' %(rain_img_name[0]), out)
+
+        comb = np.uint8(out_combine) # output of stage 1
+        ensure_dir('results_real/clean_img')
+        cv2.imwrite('results_real/clean_img/clean_%s' %(rain_img_name[0]), comb)
+
+        # =========== Target Image ===============
+        # clean_img_HR = clean_img_HR.cpu()
+        # clean_img_HR = clean_img_HR.data.squeeze(0)
+        # for t, m, s in zip(clean_img_HR, mean, std):
+        #     t.mul_(s).add_(m)
+        #
+        # clean_img_HR = clean_img_HR.numpy() # clean_img - ground truth
+        # clean_img_HR *= 255.0
+        # clean_img_HR = clean_img_HR.clip(0, 255)
+        # clean_img_HR = clean_img_HR.transpose(1, 2, 0)
+        # clean_img_HR = np.uint8(clean_img_HR)
+        #
+        # cv2.imwrite('results/GT/GT_%s' %(rain_img_name[0]), clean_img_HR)
+
+        log = "{}".format(rain_img_name[0])
+        # print('%s: PSNR = %2.5f, SSIM = %2.5f' %(rain_img_name, psnr_val, ssim_val))
+        print(log)
 
 if __name__ == '__main__':
-    test(args)
+    if args.data_type == 'synthetic':
+        test_synthetic(args)
+    elif args.data_type == 'real':
+        test_real(args)

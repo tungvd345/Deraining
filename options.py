@@ -12,10 +12,10 @@ class TrainOptions():
 		# BaseOptions.initialize(self)
 		# self.parser.add_argument('--data_dir', default='G:/DATASET/Heavy_rain_image_cvpr2019/CVPR19HeavyRainTrain/train', help='dataset directory')
 		# self.parser.add_argument('--data_dir', default='D:/DATASETS/DID-MDN-datasets/DID-MDN-training/Rain_Heavy', help='dataset directory')
-		self.parser.add_argument('--data_dir', default='D:/DATASETS/Heavy_rain_image_cvpr2019/train_301_350', help='dataset directory')
+		self.parser.add_argument('--data_dir', default='C:/DATASETS/Heavy_rain_image_cvpr2019/train_301_350', help='dataset directory')
 		self.parser.add_argument('--save_dir', default='./save', help='datasave directory')
 
-		self.parser.add_argument('--val_data_dir', default='D:/DATASETS/Heavy_rain_image_cvpr2019/val_301_350', help='val data directory')
+		self.parser.add_argument('--val_data_dir', default='C:/DATASETS/Heavy_rain_image_cvpr2019/val_301_350', help='val data directory')
 		self.parser.add_argument('--val_batch_size', type=int, default=1)
 
 		self.parser.add_argument('--load', default='Deraining', help='save result')
@@ -29,7 +29,7 @@ class TrainOptions():
 		self.parser.add_argument('--loadSizeY', type=int, default=1024, help='scale images to this size')
 		self.parser.add_argument('--fineSize', type=int, default=512, help='then crop to this size')
 		self.parser.add_argument('--need_patch', default=True, help='get the patch from image')
-		self.parser.add_argument('--patch_size', type=int, default = 400, help='patch size')
+		self.parser.add_argument('--patch_size', type=int, default = 200, help='patch size')
 
 		self.parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
 		self.parser.add_argument('--batch_size', type=int, default=4, help='input batch size for training')

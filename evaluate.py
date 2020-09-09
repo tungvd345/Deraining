@@ -10,7 +10,11 @@ from cal_ssim import SSIM
 
 parser = argparse.ArgumentParser(description='Deraining')
 
-parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/RCAN/RCAN-master/RCAN_TestCode/SR/BI/RCAN/DID-MDN_train_heavydata_epoch49/x2')
+parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/6.RESCAN-master/showdir')
+# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/7.DID-MDN-master/result_all/test_train_heavydata_epoch39_HR')
+# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/8.SPANet-master/test_HR/pred')
+# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/9.PReNet-master/results/PreNet_Rain1400_HR')
+# parser.add_argument('--data_dir_in', required=False, default='')
 # parser.add_argument('--data_dir_in', required=False, default="D:/Deraining_TungVu/results/out_img")
 parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5/gt')
 # parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/LRBI/test_with_train_param_v5/gt')

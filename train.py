@@ -181,6 +181,9 @@ def train(opt, train_dataloader, test_dataloader, model):
     # writer.add_images('image', clean_tmp, 0)
     # writer.add_images('image', rain_tmp, 1)
     ##########################
+
+    date_time = str(datetime.datetime.now())
+    save.save_log(date_time)
     for epoch in range(start_epoch, opt.epochs):
         start = time.time()
         optimizer = optim.Adam(model.parameters())
@@ -208,14 +211,14 @@ def train(opt, train_dataloader, test_dataloader, model):
             # t4 = time.time() - t3 - t2 - t1 - start_iter
             # loss_stage1 = loss_function(out_combine, clean_image_LR)
             loss_ssim = 1 - ssim((output+1)/2, (clean_image_HR+1)/2, data_range=1, size_average=True)
-            feature_output = vgg(output)
-            feature_GT_HR = vgg(clean_image_HR)
-            loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
-            # loss_clean = loss_function(clean_layer, clean_image_LR)
+            # feature_output = vgg(output)
+            # feature_GT_HR = vgg(clean_image_HR)
+            # loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
+            loss_clean = loss_function(clean_layer, clean_image_LR)
             loss_add = loss_function(add_layer, clean_image_LR)
             loss_mul = loss_function(mul_layer, clean_image_LR)
             # total_loss = loss + loss_clean + loss_add + loss_mul
-            total_loss = loss + loss_ssim + loss_edge + (loss_add+loss_mul)# + loss_stage1 + loss_vgg
+            total_loss = loss + loss_ssim + loss_edge + (loss_clean+loss_mul+loss_add)# + loss_stage1 + loss_vgg
             total_loss.backward()
             optimizer.step()
 
@@ -285,6 +288,7 @@ if __name__ == '__main__':
     import math
     from math import log10
     import time
+    import datetime
     import cv2
     from pytorch_msssim import ssim, ms_ssim
 

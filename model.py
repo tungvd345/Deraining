@@ -14,7 +14,7 @@ class Deraining(nn.Module):
     def __init__(self,args):
         super(Deraining, self).__init__()
         self.args = args
-        # self.upsample1 = nn.Upsample((self.args.patch_size // 2, self.args.patch_size // 4 * 3), mode = 'bilinear', align_corners=True) # input LR
+        self.upsample = F.interpolate
         self.upx2 = nn.Upsample(scale_factor=2, mode = 'bilinear', align_corners=True)
         # self.extractor = feature_extractor()
 
@@ -27,7 +27,7 @@ class Deraining(nn.Module):
         self.relu = nn.LeakyReLU(0.2, True)
 
         # self.channel_att = channel_attention(in_channels=128, out_channels=15)
-        self.channel_att = channel_attention(in_channels=6)
+        self.channel_att = channel_attention(in_channels=9)
         self.rcan = RCAN(args)
 
     def forward(self, x, kpts):
@@ -44,13 +44,13 @@ class Deraining(nn.Module):
         # up_feat_func.cuda()
         # features_add = up_feat_func(kpts)
         features_add = self.up_feature(kpts)
-        features_add = upsample1(features_add)
+        features_add = self.upsample(features_add, size=(height, width), mode='bilinear', align_corners=True)
 
         features_mul = self.up_feature(kpts)
-        features_mul = upsample1(features_mul)
+        features_mul = self.upsample(features_mul, size=(height, width), mode='bilinear', align_corners=True)
 
-        # atm, trans, streak = self.ats_model(x)
-        # clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
+        atm, trans, streak = self.ats_model(x)
+        clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
 
         add_layer = self.operation_layer(features_add)
         add_layer = x + add_layer
@@ -58,21 +58,21 @@ class Deraining(nn.Module):
         mul_layer = self.operation_layer(features_mul)
         mul_layer = x * mul_layer
 
-        # concatenates = torch.cat((clean, add_layer, mul_layer), dim=1)
-        concatenates = torch.cat((add_layer, mul_layer), dim=1)
+        concatenates = torch.cat((clean, add_layer, mul_layer), dim=1)
+        # concatenates = torch.cat((clean, mul_layer), dim=1)
 
         # w0, w1, w2, w3, w4 = self.channel_att(concatenates)
         # out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer + w3 * add_layer + w4 * mul_layer
-        # w0, w1, w2 = self.channel_att(concatenates)
-        # out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer
-        w1, w2 = self.channel_att(concatenates)
-        out_comb = w1 * add_layer + w2 * mul_layer
+        w0, w1, w2 = self.channel_att(concatenates)
+        out_comb = w0 * clean + w1 * add_layer + w2 * mul_layer
+        # w1, w2 = self.channel_att(concatenates)
+        # out_comb = w1 * clean + w2 * mul_layer
 
         out_SR = self.rcan(out_comb)
         # out_combine = self.upx2(out_comb)
         out_combine = out_comb
 
-        return out_SR, out_combine, out_combine, add_layer, mul_layer
+        return out_SR, out_combine, clean, mul_layer, mul_layer
         # return out_SR, out_combine, clean, clean, clean
 
 class ATS_model(nn.Module):
@@ -584,9 +584,9 @@ class channel_attention(nn.Module):
         out = x * y
         out0 = out[:,0:3,:,:]
         out1 = out[:,3:6,:,:]
-        # out2 = out[:,6:9,:,:]
+        out2 = out[:,6:9,:,:]
 
-        return out0, out1#, out2
+        return out0, out1, out2
 
 
 class RCAN(nn.Module):
@@ -604,9 +604,10 @@ class RCAN(nn.Module):
         self.RG2 = residual_group(64, 64)
         # self.RG3 = residual_group(64, 64)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(64, 256, kernel_size=3, padding=1)
-        self.pixel_shuffle = nn.PixelShuffle(scale)
-        self.conv4 = nn.Conv2d(256 // (scale * scale), 3, kernel_size=7, padding=3)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        # self.pixel_shuffle = nn.PixelShuffle(scale)
+        # self.conv4 = nn.Conv2d(256 // (scale * scale), 3, kernel_size=7, padding=3)
+        self.conv4 = nn.Conv2d(64, 3, kernel_size=7, padding=3)
         # self.reset_params()
         # ===========================================
 
@@ -621,7 +622,7 @@ class RCAN(nn.Module):
         # res4 = self.conv2(res3) + x
         res4 = self.conv2(res2) + x
         x = self.conv3(res4)
-        x = self.pixel_shuffle(x)
+        # x = self.pixel_shuffle(x)
         x = self.relu(x)
         x = self.conv4(x)
         # ===========================================

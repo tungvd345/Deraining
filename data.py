@@ -64,10 +64,13 @@ def get_keypoints(pos, imgIn, keypoint_size):
     # imgIn = np.pad(imgIn, ([0, keypoint_size], [0, keypoint_size//2*3], [0,0]), 'constant',constant_values=0)
     nkeypoints = np.size(pos, 0)
     h, w, c = imgIn.shape
-    if nkeypoints == 0:
-        print('000000000000000000')
-        nkeypoints = 128
-        pos = np.random.randint(h, size=(128,2))
+    # if nkeypoints == 0:
+    #     print('000000000000000000')
+    #     nkeypoints = 128
+    #     pos = np.random.randint(h, size=(128,2))
+
+    nkeypoints = 128
+    pos = np.random.randint(h, size=(128, 2))
 
     imgIn = np.pad(imgIn, ([0, keypoint_size[0]], [0, keypoint_size[1]], [0,0]), 'edge')
     # keypoint_size = keypoint_size
@@ -150,13 +153,13 @@ class outdoor_rain_train(data.Dataset):
 
     def __getitem__(self, idx):
         args = self.args
-        img_in = cv2.imread(self.file_in_list[idx])
-        img_tar = cv2.imread(self.file_tar_list[idx//15])
+        img_in_LR = cv2.imread(self.file_in_list[idx])
+        img_tar_LR = cv2.imread(self.file_tar_list[idx//15])
         if args.need_patch:
-            img_in, img_tar = getPatch(img_in, img_tar, self.args)
-        img_in, img_tar = augment(img_in, img_tar)
-        img_in_LR = img_in[::2, ::2, :]
-        img_tar_LR = img_tar[::2, ::2, :]
+            img_in_LR, img_tar_LR = getPatch(img_in_LR, img_tar_LR, self.args)
+        img_in_LR, img_tar_LR = augment(img_in_LR, img_tar_LR)
+        # img_in_LR = img_in[::2, ::2, :]
+        # img_tar_LR = img_tar[::2, ::2, :]
 
 
         #################################################
@@ -172,9 +175,9 @@ class outdoor_rain_train(data.Dataset):
         # keypoints_tar_pos = np.uint16(np.asarray([p.pt for p in keypoints_tar_pos]))
         # keypoints_tar = get_keypoints(keypoints_tar_pos, img_tar, 32)
         #################################################
-        img_tar_LR, img_tar, img_in_LR = RGB_np2tensor(img_tar_LR, img_tar, img_in_LR, args.nchannel)
+        img_tar_LR, img_tar_LR, img_in_LR = RGB_np2tensor(img_tar_LR, img_tar_LR, img_in_LR, args.nchannel)
         keypoints_in = RGB_np2tensor_kpt(keypoints_in, 128)
-        return img_in_LR, keypoints_in, img_tar_LR, img_tar
+        return img_in_LR, keypoints_in, img_tar_LR, img_tar_LR
 
         #################### read dataset in JORDER
         # img_in = Image.open(self.file_in_list[idx]).convert("RGB")
@@ -258,20 +261,20 @@ class outdoor_rain_test(data.Dataset):
 
         ##################### use cv2 image
         img_in = cv2.imread(self.file_in_list[idx])
-        img_in_LR = img_in[::2, ::2, :]
+        # img_in_LR = img_in[::2, ::2, :]
         img_in_LR_name = self.file_in_name[idx]
         img_tar = cv2.imread(self.file_tar_list[idx // 15])
-        img_tar_LR = img_tar[::2, ::2, :]
+        # img_tar_LR = img_tar[::2, ::2, :]
         img_tar_LR_name = self.file_tar_name[idx // 15]
 
-        h, w, c = img_in_LR.shape
+        h, w, c = img_in.shape
         keypoint_size = (h//16, w//16)
         mser = cv2.MSER_create()
-        keypoints_in_pos = mser.detect(img_in_LR)
+        keypoints_in_pos = mser.detect(img_in)
         keypoints_in_pos = np.uint16(np.asarray([p.pt for p in keypoints_in_pos]))
-        keypoints_in = get_keypoints(keypoints_in_pos, img_in_LR, keypoint_size)
+        keypoints_in = get_keypoints(keypoints_in_pos, img_in, keypoint_size)
 
-        img_tar_LR, img_tar, img_in_LR = RGB_np2tensor(img_tar_LR, img_tar, img_in_LR, args.nchannel)
+        img_tar_LR, img_tar, img_in_LR = RGB_np2tensor(img_tar, img_tar, img_in, args.nchannel)
         keypoints_in = RGB_np2tensor_kpt(keypoints_in, 128)
         ##################################################################
         return img_in_LR, keypoints_in, img_tar_LR, img_tar, img_in_LR_name
@@ -284,6 +287,39 @@ class outdoor_rain_test(data.Dataset):
         nameTar = os.path.join(self.dirTar, name)
         nameIn = os.path.join(self.dirIn, name)
         return nameIn, nameTar
+
+class real_rain_test(data.Dataset):
+    def __init__(self, args):
+        self.args = args
+        self.dir_in = args.real_rain_data_dir
+        # self.file_list, self.file_name = sorted(make_dataset(self.dir_in))
+        self.file_name = sorted(os.listdir(self.dir_in))
+        self.len = len(self.file_name)
+
+    def __getitem__(self, idx):
+        args = self.args
+
+        ##################### use cv2 image
+        real_dir = os.path.join(self.dir_in, self.file_name[idx])
+        # img_in = cv2.imread(self.file_list[idx])
+        img_in = cv2.imread(real_dir)
+        img_in_LR_name = self.file_name[idx]
+
+
+        h, w, c = img_in.shape
+        keypoint_size = (h//16, w//16)
+        mser = cv2.MSER_create()
+        keypoints_in_pos = mser.detect(img_in)
+        keypoints_in_pos = np.uint16(np.asarray([p.pt for p in keypoints_in_pos]))
+        keypoints_in = get_keypoints(keypoints_in_pos, img_in, keypoint_size)
+
+        _, _, img_in_LR = RGB_np2tensor(img_in, img_in, img_in, args.nchannel)
+        keypoints_in = RGB_np2tensor_kpt(keypoints_in, 128)
+        ##################################################################
+        return img_in_LR, keypoints_in, img_in_LR_name
+
+    def __len__(self):
+        return self.len
 
 def get_transform(opt):
     transform_list = []
