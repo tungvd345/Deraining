@@ -24,12 +24,12 @@ from skimage.metrics import peak_signal_noise_ratio as psnr
 parser = argparse.ArgumentParser(description='Deraining')
 
 # validation data
-parser.add_argument('--data_type', type=str, default='real', help='testdata type [real|synthetic]')
+parser.add_argument('--data_type', type=str, default='synthetic', help='testdata type [real|synthetic]')
 parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5')
-parser.add_argument('--real_rain_data_dir', required=False, default='D:/DATASETS/real_rain')
+parser.add_argument('--real_rain_data_dir', required=False, default='D:/DATASETS/real_rain/in')
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_478.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_300.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')

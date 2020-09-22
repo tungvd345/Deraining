@@ -18,14 +18,14 @@ def weights_init(m):
 
 def get_dataset(opt):
     data_train = outdoor_rain_train(opt)
-    dataloader = torch.utils.data.DataLoader(data_train, batch_size=opt.batch_size, drop_last=True, shuffle=False,
-                                             num_workers=int(opt.nThreads), pin_memory=False)
+    dataloader = torch.utils.data.DataLoader(data_train, batch_size=opt.batch_size, drop_last=True, shuffle=True,
+                                             num_workers=int(opt.nThreads), pin_memory=True)
     return dataloader
 
 def get_testdataset(opt):
     data_test = outdoor_rain_test(opt)
     dataloader = torch.utils.data.DataLoader(data_test, batch_size=opt.val_batch_size,
-                                             drop_last=True, shuffle=False, num_workers=int(opt.nThreads), pin_memory=False)
+                                             drop_last=True, shuffle=False, num_workers=int(opt.nThreads), pin_memory=True)
     return dataloader
 
 def set_lr(args, epoch, optimizer):

@@ -64,13 +64,13 @@ def get_keypoints(pos, imgIn, keypoint_size):
     # imgIn = np.pad(imgIn, ([0, keypoint_size], [0, keypoint_size//2*3], [0,0]), 'constant',constant_values=0)
     nkeypoints = np.size(pos, 0)
     h, w, c = imgIn.shape
-    # if nkeypoints == 0:
-    #     print('000000000000000000')
-    #     nkeypoints = 128
-    #     pos = np.random.randint(h, size=(128,2))
+    if nkeypoints == 0:
+        # print('000000000000000000')
+        nkeypoints = 128
+        pos = np.random.randint(h, size=(128,2))
 
-    nkeypoints = 128
-    pos = np.random.randint(h, size=(128, 2))
+    # nkeypoints = 128
+    # pos = np.random.randint(h, size=(128, 2))
 
     imgIn = np.pad(imgIn, ([0, keypoint_size[0]], [0, keypoint_size[1]], [0,0]), 'edge')
     # keypoint_size = keypoint_size

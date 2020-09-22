@@ -8,7 +8,6 @@ import torch.nn.functional as F
 import numpy as np
 from torch.autograd import Variable
 from math import log10
-from resnext import ResNeXt101
 
 class Deraining(nn.Module):
     def __init__(self,args):
@@ -21,7 +20,8 @@ class Deraining(nn.Module):
         self.up_feature = up_feature(in_channels=128*3)
         # self.conv1 = nn.Conv2d(in_channels=128*3, out_channels=128, kernel_size=1)
         # self.afim = AFIM(in_channels=128, out_channels=128)
-        self.ats_model = ATS_model(args, in_channels=3)
+        # self.ats_model = ATS_model(args, in_channels=3)
+        self.ats_model = SCA_UNet(in_channel=3, out_channel=3)
         self.operation_layer = operation_layer(in_channels=3)
 
         self.relu = nn.LeakyReLU(0.2, True)
@@ -49,8 +49,9 @@ class Deraining(nn.Module):
         features_mul = self.up_feature(kpts)
         features_mul = self.upsample(features_mul, size=(height, width), mode='bilinear', align_corners=True)
 
-        atm, trans, streak = self.ats_model(x)
-        clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
+        # atm, trans, streak = self.ats_model(x)
+        # clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
+        clean = self.ats_model(x)
 
         add_layer = self.operation_layer(features_add)
         add_layer = x + add_layer
@@ -301,7 +302,6 @@ class TransUNet(nn.Module):
             # nn.InstanceNorm2d(64),
             nn.ReLU(inplace=True)
         )
-        self.image_size = 240
         self.down1 = down(64, 128)
         self.down2 = down(128, 256)
         self.down3 = down(256, 512)
@@ -365,7 +365,6 @@ class down(nn.Module):
         x = self.mpconv(x)
         return x
 
-
 class up(nn.Module):
     def __init__(self, in_ch, out_ch, bilinear=False):
         super(up, self).__init__()
@@ -388,6 +387,119 @@ class up(nn.Module):
         x = self.conv(x)
         return x
 
+##################################################################################
+# Defines the SCA-clean - base on UNet
+##################################################################################
+class SCA_UNet(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super(SCA_UNet, self).__init__()
+        self.conv1x1 = nn.Conv2d(in_channel, in_channel, kernel_size=1, stride=1, padding=0)
+        # self.inc = inconv(in_channel, 64)
+        self.inconv = nn.Sequential(
+            nn.Conv2d(in_channel, 32, 3, padding=1),
+            # nn.InstanceNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, 3, padding=1),
+            # nn.InstanceNorm2d(64),
+            nn.ReLU(inplace=True)
+        )
+        self.down1 = down_SCA(64, 128)
+        self.down2 = down_SCA(128, 256)
+        self.down3 = down_SCA(256, 512)
+        self.down4 = down_SCA(512, 512)
+
+        self.up1 = up_SCA(1024, 256)
+        self.up2 = up_SCA(512, 128)
+        self.up3 = up_SCA(256, 64)
+        self.up4 = up_SCA(128, 32)
+        self.outconv = nn.Conv2d(32, out_channel, kernel_size=1)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+
+    def forward(self, x):
+        x = self.conv1x1(x)
+        x1 = self.inconv(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        # decoder
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+        x = (self.outconv(x))
+        return x
+
+class down_SCA(nn.Module):
+    def __init__(self, in_chan, out_chan, reduce=16):
+        super(down_SCA, self).__init__()
+        self.conv1 = nn.Conv2d(in_chan, out_chan, kernel_size=3, stride=2, padding=1)
+        self.relu = nn.ReLU(True)
+        self.conv2 = nn.Conv2d(out_chan, out_chan, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(out_chan, out_chan, kernel_size=3, padding=1)
+        self.sigmoid = nn.Sigmoid()
+        self.ca = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(out_chan, out_chan//reduce, kernel_size=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(out_chan//reduce, out_chan, kernel_size=1, padding=0),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = self.relu(self.conv1(x))
+        conv2 = self.relu(self.conv2(x))
+        conv3_1 = self.conv3(conv2)
+        conv3_2 = self.sigmoid(self.conv3(conv2))
+        spatial = conv3_1 * conv3_2
+        channel = self.ca(spatial)
+        sca = channel * conv2
+        out_layer = x + sca
+        return out_layer
+
+
+
+class up_SCA(nn.Module):
+    def __init__(self, in_chan, out_chan, reduce=16, bilinear=True):
+        super(up_SCA, self).__init__()
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        else:
+            self.up = nn.ConvTranspose2d(in_chan//2, in_chan//2, 2, stride=2)
+        # self.conv = double_conv(in_ch, out_ch)
+
+        self.conv1 = nn.Conv2d(in_chan, out_chan, kernel_size=3, stride=1, padding=1)
+        self.relu = nn.ReLU(True)
+        self.conv2 = nn.Conv2d(out_chan, out_chan, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(out_chan, out_chan, kernel_size=3, padding=1)
+        self.sigmoid = nn.Sigmoid()
+        self.ca = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(out_chan, out_chan // reduce, kernel_size=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(out_chan // reduce, out_chan, kernel_size=1, padding=0),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        diffX = x2.size()[2] - x1.size()[2]
+        diffY = x2.size()[3] - x1.size()[3]
+        x1 = F.pad(x1, (0, diffY, 0, diffX))
+        x = torch.cat([x2, x1], dim=1)
+
+        conv1 = self.relu(self.conv1(x))
+        conv2 = self.relu(self.conv2(conv1))
+        conv3_1 = self.conv3(conv2)
+        conv3_2 = self.sigmoid(self.conv3(conv2))
+        spatial = conv3_1 * conv3_2
+        channel = self.ca(spatial)
+        sca = channel * conv2
+        out_layer = conv1 + sca
+
+        # x = self.conv(x)
+        return out_layer
 
 # class outconv(nn.Module):
 #     def __init__(self, in_ch, out_ch):

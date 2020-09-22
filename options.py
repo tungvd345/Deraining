@@ -20,7 +20,7 @@ class TrainOptions():
 
 		self.parser.add_argument('--load', default='Deraining', help='save result')
 		self.parser.add_argument('--model_name', default='Deraining', help='model to select')
-		self.parser.add_argument('--finetuning', default=False, help='finetuning the training')
+		self.parser.add_argument('--finetuning', default=True, help='finetuning the training')
 		self.parser.add_argument('--pretrained_model', default='save/Deraining/model/model_lastest.pt', help='save result - model to start finetune')
 
 		self.parser.add_argument('--nchannel', type=int, default=3, help ='number of color channel to use')
@@ -33,7 +33,7 @@ class TrainOptions():
 
 		self.parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
 		self.parser.add_argument('--batch_size', type=int, default=4, help='input batch size for training')
-		self.parser.add_argument('--lr', type=float, default=5e-5, help='learning rate')
+		self.parser.add_argument('--lr', type=float, default=4e-5, help='learning rate')
 		self.parser.add_argument('--epochs', type=int, default=500, help='number of epochs to train')
 		self.parser.add_argument('--lrDecay', type=int, default=100, help='epoch of half lr')
 		self.parser.add_argument('--decayType', default='inv', help='lr decay function')
