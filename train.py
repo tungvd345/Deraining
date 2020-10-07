@@ -19,13 +19,13 @@ def weights_init(m):
 def get_dataset(opt):
     data_train = outdoor_rain_train(opt)
     dataloader = torch.utils.data.DataLoader(data_train, batch_size=opt.batch_size, drop_last=True, shuffle=True,
-                                             num_workers=int(opt.nThreads), pin_memory=True)
+                                             num_workers=int(opt.nThreads), pin_memory=False)
     return dataloader
 
 def get_testdataset(opt):
     data_test = outdoor_rain_test(opt)
     dataloader = torch.utils.data.DataLoader(data_test, batch_size=opt.val_batch_size,
-                                             drop_last=True, shuffle=False, num_workers=int(opt.nThreads), pin_memory=True)
+                                             drop_last=True, shuffle=False, num_workers=int(opt.nThreads), pin_memory=False)
     return dataloader
 
 def set_lr(args, epoch, optimizer):
@@ -140,7 +140,7 @@ def test(opt, model, dataloader):
 
 def train(opt, train_dataloader, test_dataloader, model):
     opt.phase = 'train'
-    model = nn.DataParallel(model)
+    model = nn.DataParallel(model, device_ids=opt.gpu_ids)
     model.apply(weights_init)
     model.cuda()
 
@@ -183,6 +183,7 @@ def train(opt, train_dataloader, test_dataloader, model):
     ##########################
 
     date_time = str(datetime.datetime.now())
+    print(date_time)
     save.save_log(date_time)
     for epoch in range(start_epoch, opt.epochs):
         start = time.time()
@@ -211,14 +212,14 @@ def train(opt, train_dataloader, test_dataloader, model):
             # t4 = time.time() - t3 - t2 - t1 - start_iter
             # loss_stage1 = loss_function(out_combine, clean_image_LR)
             loss_ssim = 1 - ssim((output+1)/2, (clean_image_HR+1)/2, data_range=1, size_average=True)
-            # feature_output = vgg(output)
-            # feature_GT_HR = vgg(clean_image_HR)
-            # loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
+            feature_output = vgg(output)
+            feature_GT_HR = vgg(clean_image_HR)
+            loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
             loss_clean = loss_function(clean_layer, clean_image_LR)
             loss_add = loss_function(add_layer, clean_image_LR)
             loss_mul = loss_function(mul_layer, clean_image_LR)
             # total_loss = loss + loss_clean + loss_add + loss_mul
-            total_loss = loss + loss_ssim + loss_edge + (loss_clean+loss_mul+loss_add)# + loss_stage1 + loss_vgg
+            total_loss = loss + loss_edge + (loss_clean+loss_mul+loss_add) + loss_vgg# + loss_ssim
             total_loss.backward()
             optimizer.step()
 
@@ -293,7 +294,7 @@ if __name__ == '__main__':
     from pytorch_msssim import ssim, ms_ssim
 
     from helper import *
-    from model import Deraining
+    from model_tmp import Deraining
     from data import outdoor_rain_train, outdoor_rain_test
     from options import TrainOptions
 

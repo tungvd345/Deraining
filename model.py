@@ -73,7 +73,7 @@ class Deraining(nn.Module):
         # out_combine = self.upx2(out_comb)
         out_combine = out_comb
 
-        return out_SR, out_combine, clean, mul_layer, mul_layer
+        return out_SR, out_combine, clean, add_layer, mul_layer
         # return out_SR, out_combine, clean, clean, clean
 
 class ATS_model(nn.Module):
@@ -700,6 +700,32 @@ class channel_attention(nn.Module):
 
         return out0, out1, out2
 
+class SCA_block(nn.Module):
+    def __init__(self, in_chan, out_chan, reduce=16):
+        super(SCA_block, self).__init__()
+        self.conv1 = nn.Conv2d(in_chan, out_chan, kernel_size=3, padding=1)
+        self.relu = nn.ReLU(True)
+        self.conv2 = nn.Conv2d(out_chan, out_chan, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(out_chan, out_chan, kernel_size=3, padding=1)
+        self.sigmoid = nn.Sigmoid()
+        self.ca = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(out_chan, out_chan//reduce, kernel_size=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(out_chan//reduce, out_chan, kernel_size=1, padding=0),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        conv1 = self.relu(self.conv1(x))
+        conv2 = self.relu(self.conv2(conv1))
+        conv3_1 = self.conv3(conv2)
+        conv3_2 = self.sigmoid(self.conv3(conv2))
+        spatial = conv3_1 * conv3_2
+        channel = self.ca(spatial)
+        sca = channel * conv2
+        out_layer = x + sca
+        return out_layer
 
 class RCAN(nn.Module):
     def __init__(self, args):
@@ -712,30 +738,33 @@ class RCAN(nn.Module):
         # ===========================================
         self.relu = nn.ReLU()
         self.conv1 = nn.Conv2d(nChannel, 64, kernel_size=7, padding=3)
-        self.RG1 = residual_group(64, 64)
-        self.RG2 = residual_group(64, 64)
-        # self.RG3 = residual_group(64, 64)
+        # self.RG1 = residual_group(64, 64)
+        # self.RG2 = residual_group(64, 64)
+        # # self.RG3 = residual_group(64, 64)
+        self.SCAB1 = SCA_block(64, 64)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
-        # self.pixel_shuffle = nn.PixelShuffle(scale)
-        # self.conv4 = nn.Conv2d(256 // (scale * scale), 3, kernel_size=7, padding=3)
-        self.conv4 = nn.Conv2d(64, 3, kernel_size=7, padding=3)
+        self.conv3 = nn.Conv2d(64, 32, kernel_size=5, padding=2)
+        self.conv4 = nn.Conv2d(32, 3, kernel_size=3, padding=1)
         # self.reset_params()
         # ===========================================
 
     def forward(self, x):
         # Make a Network path
         # ===========================================
-        x = self.conv1(x)
-        x = self.relu(x)
-        res1 = self.RG1(x)
-        res2 = self.RG2(res1)
-        # res3 = self.RG3(res2)
-        # res4 = self.conv2(res3) + x
-        res4 = self.conv2(res2) + x
-        x = self.conv3(res4)
+        x = self.relu(self.conv1(x))
+
+        sca1 = self.SCAB1(x)
+        sca2 = self.SCAB1(sca1)
+        sca3 = self.SCAB1(sca2)
+        sca3 = sca3 + sca2
+        sca4 = self.SCAB1(sca3)
+        sca4 = sca4 + sca1
+        sca5 = self.SCAB1(sca4)
+        sca5 = sca5 + x
+
+        x = self.relu(self.conv3(sca5))
         # x = self.pixel_shuffle(x)
-        x = self.relu(x)
+
         x = self.conv4(x)
         # ===========================================
         return x

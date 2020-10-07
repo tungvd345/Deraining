@@ -11,7 +11,7 @@ import torch.optim as optim
 import math
 from math import log10
 
-from model import Deraining
+from model_tmp import Deraining
 from data import outdoor_rain_test, real_rain_test
 from helper import *
 import time
@@ -29,7 +29,7 @@ parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy
 parser.add_argument('--real_rain_data_dir', required=False, default='D:/DATASETS/real_rain/in')
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_300.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_350.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')
