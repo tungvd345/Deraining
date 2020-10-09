@@ -17,7 +17,7 @@ class Deraining(nn.Module):
         self.upx2 = nn.Upsample(scale_factor=2, mode = 'bilinear', align_corners=True)
         # self.extractor = feature_extractor()
 
-        self.up_feature = up_feature(in_channels=128*3)
+        self.up_feature = up_feature(in_channels=16*16*3)
         # self.conv1 = nn.Conv2d(in_channels=128*3, out_channels=128, kernel_size=1)
         # self.afim = AFIM(in_channels=128, out_channels=128)
         # self.ats_model = ATS_model(args, in_channels=3)
@@ -53,11 +53,11 @@ class Deraining(nn.Module):
         # clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
         clean = self.ats_model(x)
 
-        add_layer = self.operation_layer(features_add)
-        add_layer = x + add_layer
+        add_residual = self.operation_layer(features_add)
+        add_layer = x + add_residual
 
-        mul_layer = self.operation_layer(features_mul)
-        mul_layer = x * mul_layer
+        mul_residual = self.operation_layer(features_mul)
+        mul_layer = x * (mul_residual+1e-8)
 
         concatenates = torch.cat((clean, add_layer, mul_layer), dim=1)
         # concatenates = torch.cat((clean, mul_layer), dim=1)
@@ -73,7 +73,7 @@ class Deraining(nn.Module):
         # out_combine = self.upx2(out_comb)
         out_combine = out_comb
 
-        return out_SR, out_combine, clean, add_layer, mul_layer
+        return out_SR, out_combine, clean, add_layer, mul_layer, add_residual, mul_residual
         # return out_SR, out_combine, clean, clean, clean
 
 class ATS_model(nn.Module):
@@ -612,7 +612,7 @@ class operation_layer(nn.Module):
 
     def forward(self, x):
         conv1 = self.relu1(self.batch_norm1(self.conv1(x)))
-        R_layer = self.relu1(self.batch_norm2(self.conv2(conv1)))
+        R_layer = (self.batch_norm2(self.conv2(conv1)))
         return R_layer
 
 # class AFIM is same in 'deep multi model fusion' paper
@@ -648,15 +648,15 @@ class up_feature(nn.Module):
     def __init__(self, in_channels, out_channels=3):#, up_size = (200,300)):
         super(up_feature, self).__init__()
         sequence = [
-            nn.Conv2d(in_channels=in_channels, out_channels=128, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=in_channels, out_channels=512, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),   # 32x48
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),   # 32x48
             nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),    # 64x96
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),    # 64x96
             nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),    # 128x192
+            nn.ConvTranspose2d(128, 32, kernel_size=4, stride=2, padding=1),    # 128x192
             nn.LeakyReLU(0.2, True),
-            nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, padding=1),     # 256x384
+            nn.ConvTranspose2d(32, 8, kernel_size=4, stride=2, padding=1),     # 256x384
             nn.LeakyReLU(0.2, True),
             # nn.Upsample(up_size, mode = 'bilinear', align_corners=True),
             nn.Conv2d(8, out_channels, kernel_size=1),

@@ -61,7 +61,7 @@ def test(opt, model, dataloader):
     opt.phase = 'test'
     avg_psnr = 0
     mse = mse1 = psnr = psnr1 = np.zeros(opt.val_batch_size)
-    avg_psnr1 = 0
+    avg_psnr_clean = avg_psnr_add = avg_psnr_mul =0
     psnr_val = 0
     loss_val = 0
     ###############################################
@@ -77,7 +77,7 @@ def test(opt, model, dataloader):
             keypoints_in = Variable(keypoints_in.cuda())
             clean_img_LR = Variable(clean_img_LR.cuda())
             clean_img_HR = Variable(clean_img_HR.cuda())
-            output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img, keypoints_in)
+            output, out_combine, clean_layer, add_layer, mul_layer, add_res, mul_res = model(rain_img, keypoints_in)
 
         loss_function = set_loss(opt)
         loss_function.cuda()
@@ -86,26 +86,41 @@ def test(opt, model, dataloader):
         loss_ssim = 1 - ssim((output + 1) / 2, (clean_img_HR + 1) / 2, data_range=1, size_average=True)
         loss_val += (loss_ssim + loss).cpu().numpy()
 
-        output = output.cpu()
-        output = output.data.squeeze(0)
-        out_combine = out_combine.cpu()
-        out_combine = out_combine.data.squeeze(0)
-
-        # denormalization
-        # mean = [0.485, 0.456, 0.406]
-        # std = [0.229, 0.224, 0.225]
         mean = [0.5, 0.5, 0.5]
         std = [0.5, 0.5, 0.5]
-        for t,t1, m, s in zip(output, out_combine, mean, std):
+        output = output.cpu()
+        output = output.data.squeeze(0)
+        for t, m, s in zip(output, mean, std):
             t.mul_(s).add_(m)
-            t1.mul_(s).add_(m)
-
         output = output.numpy()
         output *= 255.0
         output = output.clip(0, 255)
-        out_combine = out_combine.numpy()
-        out_combine *= 255.0
-        out_combine = out_combine.clip(0, 255)
+
+        clean_layer = clean_layer.cpu()
+        clean_layer = clean_layer.data.squeeze(0)
+        for t, m, s in zip(clean_layer, mean, std):
+            t.mul_(s).add_(m)
+        clean_layer = clean_layer.numpy()
+        clean_layer *= 255.0
+        clean_layer = clean_layer.clip(0, 255)
+
+        add_layer = add_layer.cpu()
+        add_layer = add_layer.data.squeeze(0)
+        for t, m, s in zip(add_layer, mean, std):
+            t.mul_(s).add_(m)
+        add_layer = add_layer.numpy()
+        add_layer *= 255.0
+        add_layer = add_layer.clip(0, 255)
+
+        mul_layer = mul_layer.cpu()
+        mul_layer = mul_layer.data.squeeze(0)
+        for t, m, s in zip(mul_layer, mean, std):
+            t.mul_(s).add_(m)
+        mul_layer = mul_layer.numpy()
+        mul_layer *= 255.0
+        mul_layer = mul_layer.clip(0, 255)
+
+
         # output = Image.fromarray(np.uint8(output[0]), mode='RGB')
 
         # =========== Target Image ===============
@@ -129,14 +144,24 @@ def test(opt, model, dataloader):
         psnr = 10 * log10(255 * 255 / (mse + 10 ** (-10)))
         avg_psnr += psnr
 
-        mse1 = ((clean_img_LR[:, 8:-8, 8:-8] - out_combine[:, 8:-8, 8:-8]) ** 2).mean()
-        psnr1 = 10 * log10(255 * 255 / (mse1 + 10 ** (-10)))
-        avg_psnr1 += psnr1
+        mse_clean = ((clean_img_LR[:, 8:-8, 8:-8] - clean_layer[:, 8:-8, 8:-8]) ** 2).mean()
+        psnr_clean = 10 * log10(255 * 255 / (mse_clean + 10 ** (-10)))
+        avg_psnr_clean += psnr_clean
+
+        mse_add = ((clean_img_LR[:, 8:-8, 8:-8] - add_layer[:, 8:-8, 8:-8]) ** 2).mean()
+        psnr_add = 10 * log10(255 * 255 / (mse_add + 10 ** (-10)))
+        avg_psnr_add += psnr_add
+
+        mse_mul = ((clean_img_LR[:, 8:-8, 8:-8] - mul_layer[:, 8:-8, 8:-8]) ** 2).mean()
+        psnr_mul = 10 * log10(255 * 255 / (mse_mul + 10 ** (-10)))
+        avg_psnr_mul += psnr_mul
 
     total_loss_val = loss_val / ((idx + 1) * opt.batch_size)
     avg_psnr = avg_psnr / (opt.val_batch_size * len(dataloader))
-    avg_psnr1 = avg_psnr1 / (opt.val_batch_size * len(dataloader))
-    return avg_psnr, avg_psnr1, total_loss_val
+    avg_psnr_clean = avg_psnr_clean / (opt.val_batch_size * len(dataloader))
+    avg_psnr_add = avg_psnr_add / (opt.val_batch_size * len(dataloader))
+    avg_psnr_mul = avg_psnr_mul / (opt.val_batch_size * len(dataloader))
+    return avg_psnr, avg_psnr_clean, avg_psnr_add, avg_psnr_mul, total_loss_val
 
 def train(opt, train_dataloader, test_dataloader, model):
     opt.phase = 'train'
@@ -199,10 +224,12 @@ def train(opt, train_dataloader, test_dataloader, model):
             keypoints_in = Variable(keypoints_in.cuda())
             clean_image_LR = Variable(clean_image_LR.cuda())
             clean_image_HR = Variable(clean_image_HR.cuda())
+            add_res_GT = clean_image_HR - rain_img
+            mul_res_GT = clean_image_HR / (rain_img + 1e-8)
             # t1 = time.time() - start_iter
             model.zero_grad()
             # t2 = time.time() - t1 - start_iter
-            output, out_combine, clean_layer, add_layer, mul_layer = model(rain_img, keypoints_in)
+            output, out_combine, clean_layer, add_layer, mul_layer, add_res, mul_res = model(rain_img, keypoints_in)
             # t3 = time.time() - t2 - t1 - start_iter
 
             loss = loss_function(output, clean_image_HR)
@@ -216,8 +243,8 @@ def train(opt, train_dataloader, test_dataloader, model):
             feature_GT_HR = vgg(clean_image_HR)
             loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
             loss_clean = loss_function(clean_layer, clean_image_LR)
-            loss_add = loss_function(add_layer, clean_image_LR)
-            loss_mul = loss_function(mul_layer, clean_image_LR)
+            loss_add = loss_function(add_res, add_res_GT)
+            loss_mul = loss_function(mul_res, mul_res_GT)
             # total_loss = loss + loss_clean + loss_add + loss_mul
             total_loss = loss + loss_edge + (loss_clean+loss_mul+loss_add) + loss_vgg# + loss_ssim
             total_loss.backward()
@@ -238,7 +265,7 @@ def train(opt, train_dataloader, test_dataloader, model):
             rain_img_tr_tb = rain_img_tr_tb.cuda()
             # clean_img_val_tb = clean_img_val_tb.cuda()
             keypoints_tr_tb = keypoints_tr_tb.cuda()
-            output_tr_tb, _, _, _, _ = model(rain_img_tr_tb, keypoints_tr_tb)
+            output_tr_tb, _, _, _, _, _, _ = model(rain_img_tr_tb, keypoints_tr_tb)
 
             clean_tmp = clean_img_tr_tb
             output_tmp = output_tr_tb
@@ -262,14 +289,16 @@ def train(opt, train_dataloader, test_dataloader, model):
 
             if(epoch + 1) % opt.period == 0:
                 model.eval()
-                avg_psnr, avg_psnr1, loss_val = test(opt, model, test_dataloader)
+                avg_psnr, avg_psnr_clean, avg_psnr_add, avg_psnr_mul, loss_val = test(opt, model, test_dataloader)
                 writer.add_scalar('Loss_Val', loss_val, epoch)
                 writer.add_scalar('PSNR', avg_psnr, epoch)
-                writer.add_scalar('PSNR1', avg_psnr1, epoch)
+                writer.add_scalar('PSNR_add', avg_psnr_add, epoch)
+                writer.add_scalar('PSNR_mul', avg_psnr_mul, epoch)
+
 
                 model.train()
-                log = "[{} / {}] \tLearning_rate: {:.8f}\t Train total_loss: {:.4f}\t Val Loss: {:.4f} \t Val PSNR: {:.4f} \t Val PSNR1: {:.4f} Time: {:.4f}".format(
-                    epoch, opt.epochs, learning_rate, total_loss_, loss_val, avg_psnr, avg_psnr1, total_time)
+                log = "[{} / {}] \tLearning_rate: {:.8f}\t Train total_loss: {:.4f}  Val Loss: {:.4f}\tVal PSNR: {:.4f}  clean:{:.4f}  add:{:.4f}  mul:{:.4f}  Time:{:.4f}".format(
+                    epoch, opt.epochs, learning_rate, total_loss_, loss_val, avg_psnr, avg_psnr_clean, avg_psnr_add, avg_psnr_mul, total_time)
                 print(log)
                 save.save_log(log)
                 save.save_model(model, epoch)
@@ -294,8 +323,8 @@ if __name__ == '__main__':
     from pytorch_msssim import ssim, ms_ssim
 
     from helper import *
-    from model_tmp import Deraining
-    from data import outdoor_rain_train, outdoor_rain_test
+    from model import Deraining
+    from data_with_grid import outdoor_rain_train, outdoor_rain_test
     from options import TrainOptions
 
     opt = TrainOptions().parse()
