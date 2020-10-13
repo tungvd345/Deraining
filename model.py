@@ -23,7 +23,8 @@ class Deraining(nn.Module):
         # self.ats_model = ATS_model(args, in_channels=3)
         self.ats_model = SCA_UNet(in_channel=3, out_channel=3)
         self.operation_layer = operation_layer(in_channels=3)
-
+        self.add_layer = add_layer()
+        self.mul_layer = mul_layer()
         self.relu = nn.LeakyReLU(0.2, True)
 
         # self.channel_att = channel_attention(in_channels=128, out_channels=15)
@@ -34,30 +35,23 @@ class Deraining(nn.Module):
         b, c, height, width = x.size()
         # x = self.upsample1(x)
 
-        # features = self.extractor(x)
-        # features_clean = self.afim(features)
-        # features_add = self.afim(features)
-        # features_mul = self.afim(features)
-
-        upsample1 = nn.Upsample((height, width), mode='bilinear', align_corners=True)
-        # up_feat_func = up_feature(in_channels=128*3, up_size=(height, width))
-        # up_feat_func.cuda()
-        # features_add = up_feat_func(kpts)
-        features_add = self.up_feature(kpts)
-        features_add = self.upsample(features_add, size=(height, width), mode='bilinear', align_corners=True)
-
-        features_mul = self.up_feature(kpts)
-        features_mul = self.upsample(features_mul, size=(height, width), mode='bilinear', align_corners=True)
+        # features_add = self.up_feature(kpts)
+        # features_add = self.upsample(features_add, size=(height, width), mode='bilinear', align_corners=True)
+        #
+        # features_mul = self.up_feature(kpts)
+        # features_mul = self.upsample(features_mul, size=(height, width), mode='bilinear', align_corners=True)
 
         # atm, trans, streak = self.ats_model(x)
         # clean = (x - (1-trans) * atm) / (trans + 0.0001) - streak
         clean = self.ats_model(x)
 
-        add_residual = self.operation_layer(features_add)
+        # add_residual = self.operation_layer(features_add)
+        # add_layer = x + add_residual
+        add_residual = self.add_layer(x)
         add_layer = x + add_residual
 
-        mul_residual = self.operation_layer(features_mul)
-        mul_layer = x * (mul_residual+1e-8)
+        mul_residual = self.mul_layer(x)
+        mul_layer = x * (mul_residual)
 
         concatenates = torch.cat((clean, add_layer, mul_layer), dim=1)
         # concatenates = torch.cat((clean, mul_layer), dim=1)
@@ -525,79 +519,106 @@ class up_SCA(nn.Module):
 #         feature = self.feature_extractor(x)
 #         return feature
 
-class feature_extractor(nn.Module):
-    def __init__(self, out_channels = 128, n_block = 5):
-        super(feature_extractor, self).__init__()
-        # layer = [nn.Conv2d(3, 128, kernel_size = 1),
-        #          nn.LeakyReLU(0.2, False)]
-        layer = []
-        self.conv = nn.Conv2d(3, 128, kernel_size=3, padding=1)
-        for i in range(n_block - 1):
-            layer += [ResidualBlockStraight(in_channels=128, out_channels=128, last=False)]
-        layer += [ResidualBlockStraight(in_channels=128, out_channels=out_channels, last=True)]
-        self.feature_extractor = nn.Sequential(*layer)
-        # self.feature_extractor = nn.Conv2d(3, 128, kernel_size = 1)
-        self.relu = nn.ReLU(False)
-        self.reset_params()
-
-    def forward(self,x):
-        feature = self.conv(x)
-        feature = self.relu(feature)
-        feature = self.feature_extractor(feature)
-        feature = self.relu(feature)
-        # print('layer weigth grad', self.feature_extractor.weight.grad)
-        return feature
-
-    @staticmethod
-    def weight_init(m):
-        if isinstance(m, nn.Conv2d):
-            init.xavier_normal_(m.weight)
-            init.constant(m.bias, 0)
-
-    def reset_params(self):
-        for i, m in enumerate(self.modules()):
-            self.weight_init(m)
-
-class ResidualBlockStraight(nn.Module):
-    def __init__(self, in_channels = 128, out_channels = 128, last=False):
-        super(ResidualBlockStraight, self).__init__()
-        assert (in_channels == out_channels)
-        self.conv1 = nn.Conv2d(in_channels, out_channels // 4, kernel_size = 3, padding = 1)
-        self.conv2 = nn.Conv2d(out_channels // 4, out_channels // 4, kernel_size = 3, padding = 1)
-        self.batch_norm12 = nn.BatchNorm2d(out_channels // 4)
-        self.conv3 = nn.Conv2d(out_channels // 4, out_channels, kernel_size = 3, padding = 1)
-        # self.batch_norm3 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.LeakyReLU(0.2, inplace=False)
-        self.tanh = nn.Tanh()
-        self.last = last
+##################################################################################Oct09-new add,mul layer
+class operator_block(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(operator_block, self).__init__()
+        self.conv0 = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=7, padding=3)
+        self.conv3 = nn.Conv2d(out_channels, out_channels, kernel_size=5, padding=2)
+        self.conv4 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.relu = nn.LeakyReLU(0.2, True)
 
     def forward(self, x):
-        residual = x
-        out = self.conv1(x)
-        # out = self.relu(self.batch_norm12(out))
-        out = self.relu(out)
-        out = self.conv2(out)
-        # out = self.relu(self.batch_norm12(out))
-        out = self.relu(out)
-        out = self.conv3(out)
-        out += residual
-        if self.last:
-            # out = self.tanh(out)
-            out = self.relu(out)
-        else:
-            out = self.relu(out)
+        conv0 = self.relu(self.conv0(x))
+        conv1 = self.relu(self.conv1(conv0))
+        conv2 = self.relu(self.conv2(conv1))
+        conv2 = self.relu(self.conv2(conv2))
+        conv3 = self.relu(self.conv3(conv1))
+        conv3 = self.relu(self.conv3(conv3))
+        conv4 = self.relu(self.conv4(conv1))
+        conv4 = self.relu(self.conv4(conv4))
+        out = torch.cat((conv2, conv3, conv4), dim=1)
         return out
 
-    @staticmethod
-    def weight_init(m):
-        if isinstance(m, nn.Conv2d):
-            init.xavier_normal_(m.weight)
-            init.constant(m.bias, 0.01)
+class add_block(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(add_block, self).__init__()
+        self.oper_blk = operator_block(in_channels=in_channels, out_channels=out_channels)
+        self.conv = nn.Conv2d(in_channels=out_channels*3, out_channels=out_channels, kernel_size=1)
+        self.relu = nn.LeakyReLU(0.2, True)
 
-    def reset_params(self):
-        for i, m in enumerate(self.modules()):
-            self.weight_init(m)
+    def forward(self, x):
+        operator = self.oper_blk(x)
+        conv = self.conv(operator)
+        out = conv + x
+        return out
 
+
+class add_layer(nn.Module):
+    def __init__(self, num_chan=64):
+        super(add_layer, self).__init__()
+        self.conv1 = nn.Conv2d(3, num_chan, kernel_size=3, padding=1)
+        self.add_blk1 = add_block(in_channels=num_chan, out_channels=num_chan)
+        self.add_blk2 = add_block(in_channels=num_chan, out_channels=num_chan)
+        self.add_blk3 = add_block(in_channels=num_chan, out_channels=num_chan)
+        self.conv2 = nn.Conv2d(num_chan, 32, kernel_size=1)
+        self.conv3 = nn.Conv2d(32, 3, kernel_size=1)
+        self.relu = nn.LeakyReLU(0.2, True)
+
+    def forward(self, x):
+        operator = self.conv1(x)
+        add1 = self.add_blk1(operator)
+        add2 = self.add_blk2(add1)
+        add3 = self.add_blk3(add2)
+        add3 = operator + add3
+        conv = self.relu(self.conv2(add3))
+        out = (self.conv3(conv))
+        return out
+
+class mul_block(nn.Module):
+    def __init__(self, in_channels, out_channels, reduce=16):
+        super(mul_block, self).__init__()
+        self.oper_blk = operator_block(in_channels=in_channels, out_channels=out_channels)
+        self.relu = nn.LeakyReLU(0.2, True)
+        self.pooling = nn.AdaptiveAvgPool2d(1)
+        self.conv1 = nn.Conv2d(3*out_channels, out_channels//reduce, kernel_size=1)
+        self.conv2 = nn.Conv2d(out_channels//reduce, out_channels, kernel_size=1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        operator = self.oper_blk(x)
+        pooling = self.pooling(operator)
+        conv_1 = self.relu(self.conv1(pooling))
+        conv_2 = self.sigmoid(self.conv2(conv_1))
+        out = conv_2 * x
+        return out
+
+class mul_layer(nn.Module):
+    def __init__(self, num_chan=64):
+        super(mul_layer, self).__init__()
+        self.conv1 = nn.Conv2d(3, num_chan, kernel_size=3, padding=1)
+        self.mul_blk1 = mul_block(in_channels=num_chan, out_channels=num_chan)
+        self.mul_blk2 = mul_block(in_channels=num_chan, out_channels=num_chan)
+        self.mul_blk3 = mul_block(in_channels=num_chan, out_channels=num_chan)
+        self.conv2 = nn.Conv2d(num_chan, 32, kernel_size=1)
+        self.conv3 = nn.Conv2d(32, 3, kernel_size=1)
+        self.relu = nn.LeakyReLU(0.2, True)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        operator = self.conv1(x)
+        mul1 = self.mul_blk1(operator)
+        mul2 = self.mul_blk2(mul1)
+        mul2 = mul1 + mul2
+        mul3 = self.mul_blk3(mul2)
+        mul3 = operator + mul3
+        conv = self.relu(self.conv2(mul3))
+        out = self.sigmoid(self.conv3(conv))
+        return out
+
+##################################################################################
 class operation_layer(nn.Module):
     def __init__(self, in_channels):
         super(operation_layer, self).__init__()
@@ -614,35 +635,6 @@ class operation_layer(nn.Module):
         conv1 = self.relu1(self.batch_norm1(self.conv1(x)))
         R_layer = (self.batch_norm2(self.conv2(conv1)))
         return R_layer
-
-# class AFIM is same in 'deep multi model fusion' paper
-class AFIM(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(AFIM, self).__init__()
-        # self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1)
-        sequence1 = [
-            nn.Conv2d(in_channels=out_channels, out_channels=64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
-            nn.Conv2d(in_channels = 64, out_channels = 64, kernel_size = 3, padding = 1),
-            nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
-            nn.Conv2d(in_channels = 64, out_channels = out_channels, kernel_size = 3, padding=1),
-            nn.Softmax2d()
-        ]
-        self.model1 = nn.Sequential(*sequence1)
-        sequence2 = [
-            nn.Conv2d(in_channels=out_channels, out_channels=64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
-            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64), nn.LeakyReLU(0.2, True),
-            nn.Conv2d(in_channels=64, out_channels=out_channels, kernel_size=1)
-        ]
-        self.model2 = nn.Sequential(*sequence2)
-
-    def forward(self, x):
-        # x = self.conv1(x)
-        x  = x * self.model1(x)
-        x  = x + self.model2(x)
-        return x
 
 class up_feature(nn.Module):
     def __init__(self, in_channels, out_channels=3):#, up_size = (200,300)):

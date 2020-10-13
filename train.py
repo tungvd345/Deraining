@@ -173,9 +173,9 @@ def train(opt, train_dataloader, test_dataloader, model):
     Numparams = count_parameters(model)
     print('Number of param = ', Numparams)
 
-    last_epoch = 0
-    # if opt.finetuning:
-    #     model.load_state_dict(torch.load(opt.pretrained_model))
+    last_epoch = 22
+    if opt.finetuning:
+        model.load_state_dict(torch.load(opt.pretrained_model))
     start_epoch = last_epoch
 
     vgg = Vgg16()
@@ -297,7 +297,7 @@ def train(opt, train_dataloader, test_dataloader, model):
 
 
                 model.train()
-                log = "[{} / {}] \tLearning_rate: {:.8f}\t Train total_loss: {:.4f}  Val Loss: {:.4f}\tVal PSNR: {:.4f}  clean:{:.4f}  add:{:.4f}  mul:{:.4f}  Time:{:.4f}".format(
+                log = "[{} / {}]\tLearning_rate: {:.8f}\tTrain total_loss: {:.4f}  Val Loss: {:.4f}\t Val PSNR: {:.4f}  clean:{:.4f}  add:{:.4f}  mul:{:.4f}  Time:{:.4f}".format(
                     epoch, opt.epochs, learning_rate, total_loss_, loss_val, avg_psnr, avg_psnr_clean, avg_psnr_add, avg_psnr_mul, total_time)
                 print(log)
                 save.save_log(log)
@@ -323,7 +323,7 @@ if __name__ == '__main__':
     from pytorch_msssim import ssim, ms_ssim
 
     from helper import *
-    from model import Deraining
+    from model_tmp import Deraining
     from data_with_grid import outdoor_rain_train, outdoor_rain_test
     from options import TrainOptions
 
