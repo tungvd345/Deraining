@@ -86,8 +86,10 @@ def test(opt, model, dataloader):
         loss_ssim = 1 - ssim((output + 1) / 2, (clean_img_HR + 1) / 2, data_range=1, size_average=True)
         loss_val += (loss_ssim + loss).cpu().numpy()
 
-        mean = [0.5, 0.5, 0.5]
-        std = [0.5, 0.5, 0.5]
+        # mean = [0.5, 0.5, 0.5]
+        # std = [0.5, 0.5, 0.5]
+        mean = [0, 0, 0]
+        std = [1, 1, 1]
         output = output.cpu()
         output = output.data.squeeze(0)
         for t, m, s in zip(output, mean, std):
@@ -173,9 +175,9 @@ def train(opt, train_dataloader, test_dataloader, model):
     Numparams = count_parameters(model)
     print('Number of param = ', Numparams)
 
-    last_epoch = 22
-    if opt.finetuning:
-        model.load_state_dict(torch.load(opt.pretrained_model))
+    last_epoch = 0
+    # if opt.finetuning:
+    #     model.load_state_dict(torch.load(opt.pretrained_model))
     start_epoch = last_epoch
 
     vgg = Vgg16()
@@ -225,7 +227,7 @@ def train(opt, train_dataloader, test_dataloader, model):
             clean_image_LR = Variable(clean_image_LR.cuda())
             clean_image_HR = Variable(clean_image_HR.cuda())
             add_res_GT = clean_image_HR - rain_img
-            mul_res_GT = clean_image_HR / (rain_img + 1e-8)
+            mul_res_GT = clean_image_HR / (rain_img + 1e-10)
             # t1 = time.time() - start_iter
             model.zero_grad()
             # t2 = time.time() - t1 - start_iter
@@ -323,7 +325,7 @@ if __name__ == '__main__':
     from pytorch_msssim import ssim, ms_ssim
 
     from helper import *
-    from model_tmp import Deraining
+    from model import Deraining
     from data_with_grid import outdoor_rain_train, outdoor_rain_test
     from options import TrainOptions
 

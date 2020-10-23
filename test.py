@@ -11,8 +11,8 @@ import torch.optim as optim
 import math
 from math import log10
 
-from model_tmp import Deraining
-from data import outdoor_rain_test, real_rain_test
+from model import Deraining
+from data_with_grid import outdoor_rain_test, real_rain_test
 from helper import *
 import time
 from scipy import io
@@ -26,10 +26,10 @@ parser = argparse.ArgumentParser(description='Deraining')
 # validation data
 parser.add_argument('--data_type', type=str, default='real', help='testdata type [real|synthetic]')
 parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5')
-parser.add_argument('--real_rain_data_dir', required=False, default='D:/DATASETS/real_rain/in')
+parser.add_argument('--real_rain_data_dir', required=False, default='D:/DATASETS/real_rain/itnet')
 parser.add_argument('--valBatchSize', type=int, default=1)
 
-parser.add_argument('--pretrained_model', default='save/Deraining/model/model_385.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model_S65/model_173_S65_Oct18_norm0-1.pt', help='save result')
 
 parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
 parser.add_argument('--patch_size', type=int, default=256, help='patch size')
@@ -123,8 +123,8 @@ def test_synthetic(args):
         #print(output.shape)
         # mean = [0.485, 0.456, 0.406]
         # std = [0.229, 0.224, 0.225]
-        mean = [0.5, 0.5, 0.5]
-        std = [0.5, 0.5, 0.5]
+        mean = [0, 0, 0]#[0.5, 0.5, 0.5]
+        std  = [1, 1, 1]#[0.5, 0.5, 0.5]
         for t, t1, m, s in zip(output, out_combine, mean, std):
             t.mul_(s).add_(m)
             t1.mul_(s).add_(m)
@@ -210,7 +210,7 @@ def test_real(args):
             rain_img = Variable(rain_img.cuda(), volatile=False)
             keypoints_in = Variable(keypoints_in.cuda())
 
-            output, out_combine, clean_layer, add_layer, mul_layer = my_model(rain_img, keypoints_in)
+            output, out_combine, clean_layer, add_layer, mul_layer, _, _ = my_model(rain_img, keypoints_in)
             #print(output.shape)
 
         output = output.cpu()
@@ -218,10 +218,11 @@ def test_real(args):
         out_combine = out_combine.cpu()
         out_combine = out_combine.data.squeeze(0)
 
-        mean = [0.5, 0.5, 0.5]
-        std = [0.5, 0.5, 0.5]
-        for t, t1, m, s in zip(output, out_combine, mean, std):
+        mean = [0, 0, 0]#[0.5, 0.5, 0.5]
+        std  = [1, 1, 1]#[0.5, 0.5, 0.5]
+        for t, m, s in zip(output, mean, std):
             t.mul_(s).add_(m)
+        for t1, m, s in zip(out_combine, mean, std):
             t1.mul_(s).add_(m)
 
         output = output.numpy()
@@ -234,12 +235,12 @@ def test_real(args):
         out_combine = out_combine.transpose(1, 2, 0)
 
         out = np.uint8(output) # output of network
-        ensure_dir('results_real/out_img')
-        cv2.imwrite('results_real/out_img/out_%s' %(rain_img_name[0]), out)
+        ensure_dir('results_itnet/out_img')
+        cv2.imwrite('results_itnet/out_img/out_%s' %(rain_img_name[0]), out)
 
         comb = np.uint8(out_combine) # output of stage 1
-        ensure_dir('results_real/clean_img')
-        cv2.imwrite('results_real/clean_img/clean_%s' %(rain_img_name[0]), comb)
+        ensure_dir('results_itnet/clean_img')
+        cv2.imwrite('results_itnet/clean_img/clean_%s' %(rain_img_name[0]), comb)
 
         # =========== Target Image ===============
         # clean_img_HR = clean_img_HR.cpu()

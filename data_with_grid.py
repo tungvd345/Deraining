@@ -26,8 +26,8 @@ def RGB_np2tensor(imgIn, imgTar, imgTarLR, channel):
     # imgIn = (imgIn/255.0 - 0.5) * 2
     # imgTar = (imgTar/255.0 - 0.5) * 2
 
-    transform_list = [transforms.Normalize((0, 0, 0), (255, 255, 255)),
-                        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+    transform_list = [transforms.Normalize((0, 0, 0), (255, 255, 255)),]
+                        # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     normalize = transforms.Compose(transform_list)
     imgIn = normalize(imgIn)
     imgTar = normalize(imgTar)
@@ -42,8 +42,8 @@ def RGB_np2tensor_kpt(keypoints_in, num_keypoints):
     keypoints_in = torch.Tensor(keypoints_in.transpose(ts).astype(float)).mul_(1.0)
 
     # normalization
-    transform_list = [transforms.Normalize((0, 0, 0)*num_keypoints, (255, 255, 255)*num_keypoints),
-                      transforms.Normalize((0.5, 0.5, 0.5)*num_keypoints, (0.5, 0.5, 0.5)*num_keypoints)]
+    transform_list = [transforms.Normalize((0, 0, 0)*num_keypoints, (255, 255, 255)*num_keypoints),]
+                      # transforms.Normalize((0.5, 0.5, 0.5)*num_keypoints, (0.5, 0.5, 0.5)*num_keypoints)]
     normalize = transforms.Compose(transform_list)
     keypoints_in = normalize(keypoints_in)
 

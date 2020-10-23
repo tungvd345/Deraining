@@ -33,13 +33,13 @@ class TrainOptions():
 
 		self.parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
 		self.parser.add_argument('--batch_size', type=int, default=4, help='input batch size for training')
-		self.parser.add_argument('--lr', type=float, default=5e-5, help='learning rate')
+		self.parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 		self.parser.add_argument('--epochs', type=int, default=500, help='number of epochs to train')
 		self.parser.add_argument('--lrDecay', type=int, default=100, help='epoch of half lr')
 		self.parser.add_argument('--decayType', default='inv', help='lr decay function')
 		self.parser.add_argument('--lossType', default='MSE', help='Loss type')
 
-		self.parser.add_argument('--period', type=int, default=1, help='period of evaluation')
+		self.parser.add_argument('--period', type=int, default=5, help='period of evaluation')
 		self.parser.add_argument('--gpu', type=int, default=0, help='gpu index')
 		self.parser.add_argument('--scale', type=int, default=2, help='scale output size /input size')
 
