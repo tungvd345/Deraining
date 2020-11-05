@@ -40,6 +40,8 @@ def set_lr(args, epoch, optimizer):
     elif decayType == 'inv':
         k = 1 / lrDecay
         lr = args.lr / (1 + k * epoch)
+        if epoch >= 200:
+            lr = args.lr / (1+k*200)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     return lr
@@ -175,9 +177,9 @@ def train(opt, train_dataloader, test_dataloader, model):
     Numparams = count_parameters(model)
     print('Number of param = ', Numparams)
 
-    last_epoch = 0
-    # if opt.finetuning:
-    #     model.load_state_dict(torch.load(opt.pretrained_model))
+    last_epoch = 107
+    if opt.finetuning:
+        model.load_state_dict(torch.load(opt.pretrained_model))
     start_epoch = last_epoch
 
     vgg = Vgg16()
@@ -238,17 +240,15 @@ def train(opt, train_dataloader, test_dataloader, model):
             grad_h_est, grad_v_est = gradient(output)
             grad_h_gt, grad_v_gt = gradient(clean_image_HR)
             loss_edge = l1_loss(grad_h_est, grad_h_gt) + l1_loss(grad_v_est, grad_v_gt)
-            # t4 = time.time() - t3 - t2 - t1 - start_iter
-            # loss_stage1 = loss_function(out_combine, clean_image_LR)
             loss_ssim = 1 - ssim((output+1)/2, (clean_image_HR+1)/2, data_range=1, size_average=True)
-            feature_output = vgg(output)
-            feature_GT_HR = vgg(clean_image_HR)
-            loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
+            # feature_output = vgg(output)
+            # feature_GT_HR = vgg(clean_image_HR)
+            # loss_vgg = mse_loss(feature_output.relu3_3, feature_GT_HR.relu3_3)
             loss_clean = loss_function(clean_layer, clean_image_LR)
             loss_add = loss_function(add_res, add_res_GT)
             loss_mul = loss_function(mul_res, mul_res_GT)
             # total_loss = loss + loss_clean + loss_add + loss_mul
-            total_loss = loss + loss_edge + (loss_clean+loss_mul+loss_add) + loss_vgg# + loss_ssim
+            total_loss = loss + loss_edge + (loss_clean+loss_mul+loss_add) #+ 3*loss_vgg# + loss_ssim
             total_loss.backward()
             optimizer.step()
 

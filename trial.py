@@ -1,7 +1,18 @@
 import torch
 import torch.nn as nn
+import os
 import numpy as np
+import cv2
+from skimage.metrics import structural_similarity as ssim
+from skimage.metrics import peak_signal_noise_ratio as psnr
 from torchvision import datasets, transforms, models
+
+from torch.autograd import Variable
+import argparse
+import numpy as np
+
+from model import Deraining
+from data_with_grid import outdoor_rain_test, real_rain_test
 #
 # model = models.resnext101_32x8d(pretrained = True)
 # print('model: ',model )
@@ -14,9 +25,324 @@ from torchvision import datasets, transforms, models
 # mymodel = nn.Sequential(*model)
 # print(mymodel)
 
-mse = np.zeros(4)
-for i in range(4):
-    mse[i] = (i / 4)
 
-print(mse)
 
+############################################# create dataset - pix2pix type
+# path = 'D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5'
+# in_path = path + '/' + 'in'
+# gt_path = path + '/' + 'gt'
+# file_in = sorted(os.listdir(in_path))
+# file_gt = sorted(os.listdir(gt_path))
+#
+# for i in range(len(file_in)):
+#     print("python testing.py --rain_name ", file_in[i])
+# # for i in range(len(file_in)):
+# #     file_in_path = in_path + '/' + file_in[i]
+# #     file_gt_path = gt_path + '/' + file_gt[i]
+# #     img_in = cv2.imread(file_in_path)
+# #     img_gt = cv2.imread(file_gt_path)
+# #     img_pix2pix = np.concatenate((img_in, img_gt), axis=1)
+# #     cv2.imwrite(path+'/pix2pix/%s' %(file_in[i]), img_pix2pix)
+#############################################
+
+############################################# extractor feature from model
+parser = argparse.ArgumentParser(description='Deraining')
+# validation data
+parser.add_argument('--data_type', type=str, default='synthetic', help='testdata type [real|synthetic]')
+parser.add_argument('--val_data_dir', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5')
+parser.add_argument('--real_rain_data_dir', required=False, default='D:/DATASETS/real_rain/in')
+parser.add_argument('--valBatchSize', type=int, default=1)
+
+
+# parser.add_argument('--pretrained_model', default='save/Deraining/model_S65/Oct18_model_195_S65_norm0-1.pt', help='save result')
+parser.add_argument('--pretrained_model', default='save/Deraining/model/model_184.pt', help='save result')
+parser.add_argument('--save_dir_syn_data', required=False, default='./extract_syn')
+parser.add_argument('--save_dir_real_data', required=False, default='./extract_real')
+
+parser.add_argument('--nchannel', type=int, default=3, help='number of color channels to use')
+parser.add_argument('--patch_size', type=int, default=256, help='patch size')
+
+parser.add_argument('--nThreads', type=int, default=8, help='number of threads for data loading')
+parser.add_argument('--gpu', type=int, default=0, help='gpu index')
+parser.add_argument('--scale', type=int, default=2, help='scale output size /input size')
+
+args = parser.parse_args()
+
+def get_testdataset(args):
+    if args.data_type == 'synthetic':
+        data_test = outdoor_rain_test(args)
+    elif args.data_type == 'real':
+        data_test = real_rain_test(args)
+
+    dataloader = torch.utils.data.DataLoader(data_test, batch_size=1,
+                                             drop_last=True, shuffle=False, num_workers=int(args.nThreads), pin_memory=False)
+    return dataloader
+
+def ensure_dir(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+def test_synthetic(args):
+
+    my_model = Deraining(args)
+    my_model = nn.DataParallel(my_model)
+    my_model.cuda()
+    my_model.load_state_dict(torch.load(args.pretrained_model))
+    # print("model: \n",my_model)
+
+    test_dataloader = get_testdataset(args)
+    my_model.eval()
+
+    avg_psnr = 0
+    avg_ssim = 0
+    count = 0
+
+    for idx, (rain_img, keypoints_in, clean_img_LR, clean_img_HR, rain_img_name) in enumerate(test_dataloader):
+        count = count + 1
+        with torch.no_grad():
+            rain_img = Variable(rain_img.cuda())
+            clean_img_HR = Variable(clean_img_HR.cuda())
+            keypoints_in = Variable(keypoints_in.cuda())
+            output, out_combine, clean_layer, add_layer, mul_layer, add_res, mul_res = my_model(rain_img, keypoints_in)
+
+        # add_res = rain_img-clean_img_HR#-rain_img
+        # mul_res = rain_img/clean_img_HR#/rain_img
+
+        # mean = [0.485, 0.456, 0.406]
+        # std = [0.229, 0.224, 0.225]
+        mean = [0, 0, 0]
+        std  = [1, 1, 1]
+        output = output.cpu()
+        output = output.data.squeeze(0)
+        for t, m, s in zip(output, mean, std):
+            t.mul_(s).add_(m)
+        output = output.numpy()
+        output *= 255.0
+        output = output.clip(0, 255)
+        output = output.transpose(1, 2, 0)
+        out = np.uint8(output)
+        ensure_dir('extract/out_img')
+        cv2.imwrite('extract/out_img/out_%s' % (rain_img_name[0]), out)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        out_combine = out_combine.cpu()
+        out_combine = out_combine.data.squeeze(0)
+        for t, m, s in zip(out_combine, mean, std):
+            t.mul_(s).add_(m)
+        out_combine = out_combine.numpy()
+        out_combine *= 255.0
+        out_combine = out_combine.clip(0, 255)
+        out_combine = out_combine.transpose(1, 2, 0)
+        comb = np.uint8(out_combine)
+        ensure_dir('extract/comb_img')
+        cv2.imwrite('extract/comb_img/comb_%s' % (rain_img_name[0]), comb)  # cv2.cvtColor(comb, cv2.COLOR_BGR2RGB))
+
+        clean_layer = clean_layer.cpu()
+        clean_layer = clean_layer.data.squeeze(0)
+        for t, m, s in zip(clean_layer, mean, std):
+            t.mul_(s).add_(m)
+        clean_layer = clean_layer.numpy()
+        clean_layer *= 255.0
+        clean_layer = clean_layer.clip(0, 255)
+        clean_layer = clean_layer.transpose(1, 2, 0)
+        clean = np.uint8(clean_layer)
+        ensure_dir('extract/clean_img')
+        cv2.imwrite('extract/clean_img/clean_%s' % (rain_img_name[0]), clean)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        add_layer = add_layer.cpu()
+        add_layer = add_layer.data.squeeze(0)
+        for t, m, s in zip(add_layer, mean, std):
+            t.mul_(s).add_(m)
+        add_layer = add_layer.numpy()
+        add_layer *= 255.0
+        add_layer = add_layer.clip(0, 255)
+        add_layer = add_layer.transpose(1, 2, 0)
+        add = np.uint8(add_layer)
+        ensure_dir('extract/add_img')
+        cv2.imwrite('extract/add_img/add_%s' % (rain_img_name[0]), add)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        mul_layer = mul_layer.cpu()
+        mul_layer = mul_layer.data.squeeze(0)
+        for t, m, s in zip(mul_layer, mean, std):
+            t.mul_(s).add_(m)
+        mul_layer = mul_layer.numpy()
+        mul_layer *= 255.0
+        mul_layer = mul_layer.clip(0, 255)
+        mul_layer = mul_layer.transpose(1, 2, 0)
+        mul = np.uint8(mul_layer)
+        ensure_dir('extract/mul_img')
+        cv2.imwrite('extract/mul_img/mul_%s' % (rain_img_name[0]), mul)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        add_res = add_res.cpu()
+        add_res = add_res.data.squeeze(0)
+        for t, m, s in zip(add_res, mean, std):
+            t.mul_(s).add_(m)
+        add_res = add_res.numpy()
+        add_res *= 255.0
+        add_res = add_res.clip(0, 255)
+        add_res = add_res.transpose(1, 2, 0)
+        a_res = np.uint8(add_res)
+        ensure_dir('extract/add_res_img')
+        cv2.imwrite('extract/add_res_img/add_%s' % (rain_img_name[0]), a_res)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        mul_res = mul_res.cpu()
+        mul_res = mul_res.data.squeeze(0)
+        for t, m, s in zip(mul_res, mean, std):
+            t.mul_(s).add_(m)
+        mul_res = mul_res.numpy()
+        mul_res *= 255.0
+        mul_res = mul_res.clip(0, 255)
+        mul_res = mul_res.transpose(1, 2, 0)
+        m_res = np.uint8(mul_res)
+        ensure_dir('extract/mul_res_img')
+        cv2.imwrite('extract/mul_res_img/mul_%s' % (rain_img_name[0]), m_res)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        # =========== Target Image ===============
+        clean_img_HR = clean_img_HR.cpu()
+        clean_img_HR = clean_img_HR.data.squeeze(0)
+        for t, m, s in zip(clean_img_HR, mean, std):
+            t.mul_(s).add_(m)
+
+        clean_img_HR = clean_img_HR.numpy() # clean_img - ground truth
+        clean_img_HR *= 255.0
+        clean_img_HR = clean_img_HR.clip(0, 255)
+        clean_img_HR = clean_img_HR.transpose(1, 2, 0)
+        clean_img_HR = np.uint8(clean_img_HR)
+
+        cv2.imwrite('results/GT/GT_%s' %(rain_img_name[0]), clean_img_HR)
+
+        psnr_val = psnr(out, clean_img_HR, data_range=255)
+        avg_psnr += psnr_val
+
+        ssim_val = ssim(out, clean_img_HR, data_range=255, multichannel=True, gaussian_weights=True)
+        avg_ssim += ssim_val
+        log = "{}:\t PSNR = {:.5f}, SSIM = {:.5f}".format(rain_img_name[0], psnr_val, ssim_val)
+        # print('%s: PSNR = %2.5f, SSIM = %2.5f' %(rain_img_name, psnr_val, ssim_val))
+        print(log)
+
+    avg_psnr /= (count)
+    avg_ssim /= (count)
+    print('AVG PSNR = %2.5f, Average SSIM = %2.5f'%(avg_psnr, avg_ssim))
+
+def test_real(args):
+
+    my_model = Deraining(args)
+    my_model = nn.DataParallel(my_model)
+    my_model.cuda()
+    my_model.load_state_dict(torch.load(args.pretrained_model))
+    # print("model: \n",my_model)
+
+    test_dataloader = get_testdataset(args)
+    my_model.eval()
+
+    avg_psnr = 0
+    avg_ssim = 0
+    count = 0
+
+    for idx, (rain_img, keypoints_in, rain_img_name) in enumerate(test_dataloader):
+        count = count + 1
+        with torch.no_grad():
+            rain_img = Variable(rain_img.cuda())
+            keypoints_in = Variable(keypoints_in.cuda())
+            output, out_combine, clean_layer, add_layer, mul_layer, add_res, mul_res = my_model(rain_img, keypoints_in)
+
+        # add_res = rain_img-clean_img_HR#-rain_img
+        # mul_res = rain_img/clean_img_HR#/rain_img
+
+        output = output.cpu()
+        output = output.data.squeeze(0)
+        out_combine = out_combine.cpu()
+        out_combine = out_combine.data.squeeze(0)
+        clean_layer = clean_layer.cpu()
+        clean_layer = clean_layer.data.squeeze(0)
+        add_layer = add_layer.cpu()
+        add_layer = add_layer.data.squeeze(0)
+        mul_layer = mul_layer.cpu()
+        mul_layer = mul_layer.data.squeeze(0)
+        add_res = add_res.cpu()
+        add_res = add_res.data.squeeze(0)
+        mul_res = mul_res.cpu()
+        mul_res = mul_res.data.squeeze(0)
+        #print(output.shape)
+        # mean = [0.485, 0.456, 0.406]
+        # std = [0.229, 0.224, 0.225]
+        mean = [0, 0, 0]#[0.5, 0.5, 0.5]
+        std  = [1, 1, 1]#[0.5, 0.5, 0.5]
+        for t, m, s in zip(output, mean, std):
+            t.mul_(s).add_(m)
+        for t, m, s in zip(out_combine, mean, std):
+            t.mul_(s).add_(m)
+        for t, m, s in zip(clean_layer, mean, std):
+            t.mul_(s).add_(m)
+        for t, m, s in zip(add_layer, mean, std):
+            t.mul_(s).add_(m)
+        for t, m, s in zip(mul_layer, mean, std):
+            t.mul_(s).add_(m)
+        for t, m, s in zip(add_res, mean, std):
+            t.mul_(s).add_(m)
+        for t, m, s in zip(mul_res, mean, std):
+            t.mul_(s).add_(m)
+
+        output = output.numpy()
+        output *= 255.0
+        output = output.clip(0, 255)
+        output = output.transpose(1, 2, 0)
+        out_combine = out_combine.numpy()
+        out_combine *= 255.0
+        out_combine = out_combine.clip(0, 255)
+        out_combine = out_combine.transpose(1, 2, 0)
+        clean_layer = clean_layer.numpy()
+        clean_layer *= 255.0
+        clean_layer = clean_layer.clip(0, 255)
+        clean_layer = clean_layer.transpose(1, 2, 0)
+        add_layer = add_layer.numpy()
+        add_layer *= 255.0
+        add_layer = add_layer.clip(0, 255)
+        add_layer = add_layer.transpose(1, 2, 0)
+        mul_layer = mul_layer.numpy()
+        mul_layer *= 255.0
+        mul_layer = mul_layer.clip(0, 255)
+        mul_layer = mul_layer.transpose(1, 2, 0)
+        add_res = add_res.numpy()
+        add_res *= 255.0
+        add_res = add_res.clip(0, 255)
+        add_res = add_res.transpose(1, 2, 0)
+        mul_res = mul_res.numpy()
+        mul_res *= 255.0
+        mul_res = mul_res.clip(0, 255)
+        mul_res = mul_res.transpose(1, 2, 0)
+
+        save_dir = args.save_dir_real_data
+        out = np.uint8(output)
+        ensure_dir(save_dir + '/out_img')
+        cv2.imwrite(save_dir + '/out_img/out_%s' %(rain_img_name[0]), out)#cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        comb = np.uint8(out_combine)
+        ensure_dir(save_dir + '/comb_img')
+        cv2.imwrite(save_dir + '/comb_img/comb_%s' %(rain_img_name[0]), comb)#cv2.cvtColor(comb, cv2.COLOR_BGR2RGB))
+
+        clean = np.uint8(clean_layer)
+        ensure_dir(save_dir + '/clean_img')
+        cv2.imwrite(save_dir + '/clean_img/clean_%s' % (rain_img_name[0]), clean)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        add = np.uint8(add_layer)
+        ensure_dir(save_dir + '/add_img')
+        cv2.imwrite(save_dir + '/add_img/add_%s' % (rain_img_name[0]), add)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        mul = np.uint8(mul_layer)
+        ensure_dir(save_dir + '/mul_img')
+        cv2.imwrite(save_dir + '/mul_img/mul_%s' % (rain_img_name[0]), mul)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        a_res = np.uint8(add_res)
+        ensure_dir(save_dir + '/add_res_img')
+        cv2.imwrite(save_dir + '/add_res_img/add_%s' % (rain_img_name[0]), a_res)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+
+        m_res = np.uint8(mul_res)
+        ensure_dir(save_dir + '/mul_res_img')
+        cv2.imwrite(save_dir + '/mul_res_img/mul_%s' % (rain_img_name[0]), m_res)  # cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+        print(rain_img_name[0])
+
+if __name__ == '__main__':
+    if args.data_type == 'synthetic':
+        test_synthetic(args)
+    elif args.data_type == 'real':
+        test_real(args)
