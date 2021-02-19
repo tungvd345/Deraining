@@ -21,7 +21,7 @@ class TrainOptions():
 		self.parser.add_argument('--load', default='Deraining', help='save result')
 		self.parser.add_argument('--model_name', default='Deraining', help='model to select')
 		self.parser.add_argument('--finetuning', default=True, help='finetuning the training')
-		self.parser.add_argument('--pretrained_model', default='save/Deraining/model/model_107.pt', help='save result - model to start finetune')
+		self.parser.add_argument('--pretrained_model', default='save/Deraining/model/model_129.pt', help='save result - model to start finetune')
 
 		self.parser.add_argument('--nchannel', type=int, default=3, help ='number of color channel to use')
 		# self.parser.add_argument('--nkeypoint', type=int, default=128, help='number of keypoints to use')
@@ -39,7 +39,7 @@ class TrainOptions():
 		self.parser.add_argument('--decayType', default='inv', help='lr decay function')
 		self.parser.add_argument('--lossType', default='MSE', help='Loss type')
 
-		self.parser.add_argument('--period', type=int, default=5, help='period of evaluation')
+		self.parser.add_argument('--period', type=int, default=10, help='period of evaluation')
 		self.parser.add_argument('--gpu', type=int, default=0, help='gpu index')
 		self.parser.add_argument('--scale', type=int, default=2, help='scale output size /input size')
 

@@ -108,7 +108,7 @@ def make_dataset(dir):
             path = os.path.join(root, fname)
             images.append(path)
             file_name.append(fname)
-    return images, file_name
+    return sorted(images), sorted(file_name)
 
 class outdoor_rain_train(data.Dataset):
     def __init__(self, args):
@@ -248,8 +248,10 @@ class outdoor_rain_test(data.Dataset):
         # img_in_LR = img_in[::2, ::2, :]
         img_in_LR_name = self.file_in_name[idx]
         img_tar = cv2.imread(self.file_tar_list[idx // 15])
+        # img_tar = cv2.imread(self.file_tar_name[idx])
         # img_tar_LR = img_tar[::2, ::2, :]
         img_tar_LR_name = self.file_tar_name[idx // 15]
+        # img_tar_LR_name = self.file_tar_name[idx]
 
         num_p = 16
         keypoints_in = get_grid(img_in, num_p)

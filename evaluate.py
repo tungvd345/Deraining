@@ -10,17 +10,21 @@ from cal_ssim import SSIM
 
 parser = argparse.ArgumentParser(description='Deraining')
 
+# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/2.JCAS/results')
 # parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/6.RESCAN-master/showdir')
 # parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/7.DID-MDN-master/result_all/test_train_heavydata_epoch39_HR')
 # parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/8.SPANet-master/test_HR/pred')
 # parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/9.PReNet-master/results/PreNet_Rain1400_HR')
 # parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/10.UMRL--using-Cycle-Spinning-master/result_all/test_heavy_epoch49_HR')
 # parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/14.RCDNet-master/RCDNet_code/experiment/RCDNet_test/results')
-parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/11.Semi-supervised-IRR-master/test_results_finetuned_epoch15')
+# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/11.Semi-supervised-IRR-master/test_results_finetuned_epoch15')
 # parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/15.MSPFN-master/model/test/results_MSPFN_pretrained30')
-# parser.add_argument('--data_dir_in', required=False, default="D:/Deraining_TungVu/results/out_img")
-parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5/gt')
-# parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/LRBI/test_with_train_param_v5/gt')
+# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/16.DGNL-Net/results_40k_heavyrain/predict_40k_heavyrain')
+# parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/17.DRD-Net-master/DRD-Net/result_Outdoor-Rain')
+# parser.add_argument('--data_dir_in', required=False, default="D:/Deraining_TungVu/extract/out_img")
+parser.add_argument('--data_dir_in', required=False, default='D:/rain_comparison/7.DID-MDN-master/result_DIDMDN_data')
+# parser.add_argument('--data_dir_tar', required=False, default='D:/DATASETS/Heavy_rain_image_cvpr2019/test_with_train_param_v5/gt')
+parser.add_argument('--data_dir_tar', required=False, default='C:/DATASETS/DID-MDN-datasets/DID-MDN_test_orig')
 
 args = parser.parse_args()
 for arg in vars(args):
@@ -42,7 +46,8 @@ def evaluate(args):
 
     for i in range(len_list_in):
         list_in = os.path.join(path_in, file_in[i])
-        list_tar = os.path.join(path_tar, file_tar[i//15])
+        # list_tar = os.path.join(path_tar, file_tar[i//15])
+        list_tar = os.path.join(path_tar, file_tar[i])
         img_in = cv2.imread(list_in)
         img_tar = cv2.imread(list_tar)
 
